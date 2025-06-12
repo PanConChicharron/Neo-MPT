@@ -25,11 +25,13 @@ Note: For acados installation, please follow the official acados installation gu
 ## Usage
 
 ```python
-from spline_fit import SplineFitter
+from spline_fit import ChordLengthParametricSpline2D
 from mpc_controller import MPCController
+import numpy as np
 
-# Generate spline trajectory
-spline = SplineFitter(waypoints)
+# Create waypoints
+waypoints = np.array([[0, 0], [5, 2], [10, 1], [15, 3]])
+spline = ChordLengthParametricSpline2D(waypoints)
 trajectory = spline.generate_trajectory()
 
 # Track with MPC

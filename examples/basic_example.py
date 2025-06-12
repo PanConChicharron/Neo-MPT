@@ -16,7 +16,7 @@ import os
 # Add parent directory to path to import modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from spline_fit import CurvilinearSpline
+from spline_fit import CurvilinearCoordinates
 from mpc_controller import MPCController, VehicleModel
 
 
@@ -37,7 +37,7 @@ def main():
     # 1. Create waypoints and fit spline
     print("1. Creating waypoints and fitting spline...")
     waypoints = create_test_waypoints()
-    spline = CurvilinearSpline(waypoints, closed_path=False)
+    spline = CurvilinearCoordinates(waypoints, closed_path=False)
     
     print(f"   - Number of waypoints: {len(waypoints)}")
     print(f"   - Path length: {spline.get_path_length():.2f} m")

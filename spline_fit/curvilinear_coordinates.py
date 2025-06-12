@@ -1,13 +1,13 @@
 import numpy as np
 from typing import Union, Tuple, Optional
-from .spline_fitter import SplineFitter
+from .chord_length_parametric_spline_2d import ChordLengthParametricSpline2D
 
 
-class CurvilinearSpline(SplineFitter):
+class CurvilinearCoordinates(ChordLengthParametricSpline2D):
     """
     Curvilinear coordinate system implementation using cubic splines.
     
-    This class extends SplineFitter to provide curvilinear coordinate
+    This class extends ChordLengthParametricSpline2D to provide curvilinear coordinate
     transformations, which are essential for path-following MPC controllers.
     
     Curvilinear coordinates (s, d) where:
@@ -17,7 +17,7 @@ class CurvilinearSpline(SplineFitter):
     
     def __init__(self, waypoints: np.ndarray, closed_path: bool = False):
         """
-        Initialize curvilinear spline with waypoints.
+        Initialize curvilinear coordinate system with waypoints.
         
         Args:
             waypoints: Array of shape (N, 2) containing [x, y] coordinates

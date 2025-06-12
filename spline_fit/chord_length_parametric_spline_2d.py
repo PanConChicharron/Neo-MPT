@@ -4,12 +4,18 @@ from typing import List, Tuple, Optional, Union
 from .cubic_spline import CubicSpline
 
 
-class SplineFitter:
+class ChordLengthParametricSpline2D:
     """
-    High-level interface for fitting splines to waypoints and generating trajectories.
+    2D cubic spline with chord-length parameterization for waypoint fitting.
     
-    This class uses the modular CubicSpline class and provides:
-    - Waypoint management and parameterization
+    This class uses chord-length parameterization where parameter values are based
+    on cumulative Euclidean distances between waypoints. This provides:
+    - Natural curve shapes without clustering artifacts
+    - Proportional parameter spacing based on waypoint distances
+    - Efficient computation for path planning applications
+    
+    The class uses the modular CubicSpline class and provides:
+    - Waypoint management and chord-length parameterization
     - Trajectory generation with specified resolution
     - Visualization and analysis tools
     - Path queries and utilities
@@ -17,7 +23,7 @@ class SplineFitter:
     
     def __init__(self, waypoints: np.ndarray, closed_path: bool = False):
         """
-        Initialize the SplineFitter with waypoints.
+        Initialize the chord-length parameterized spline with waypoints.
         
         Args:
             waypoints: Array of shape (N, 2) containing [x, y] coordinates
@@ -36,7 +42,7 @@ class SplineFitter:
         self._create_spline()
     
     def _parameterize_waypoints(self):
-        """Parameterize waypoints using cumulative arc length."""
+        """Parameterize waypoints using cumulative chord lengths."""
         # Calculate cumulative distance along waypoints
         distances = np.zeros(len(self.waypoints))
         for i in range(1, len(self.waypoints)):

@@ -3,13 +3,14 @@ import casadi as ca
 from acados_template import AcadosOcp, AcadosOcpSolver
 from typing import Dict, Optional, Tuple
 from .vehicle_model import VehicleModel
+from .curvilinear_dynamics import CurvilinearDynamics
 
 
 class MPCController:
     """
     Model Predictive Controller for path tracking using acados.
     
-    This controller uses curvilinear coordinates and cubic spline references
+    This controller can use either Cartesian or curvilinear coordinates
     for optimal path following performance.
     """
     
@@ -31,6 +32,12 @@ class MPCController:
         self.dt = dt
         self.use_curvilinear = use_curvilinear
         self.N = int(prediction_horizon / dt)  # Number of prediction steps
+        
+        # Initialize curvilinear dynamics if needed
+        if self.use_curvilinear:
+            self.curvilinear_dynamics = CurvilinearDynamics(vehicle_model)
+        else:
+            self.curvilinear_dynamics = None
         
         # Cost function weights
         self.Q = np.diag([10.0, 100.0, 10.0, 1.0])  # State weights
@@ -93,34 +100,23 @@ class MPCController:
     
     def _setup_curvilinear_model(self, ocp):
         """Setup OCP with curvilinear coordinates."""
-        # State: [s, e_y, e_ψ, v]
+        # State: [s, d, theta_e, v]
         # Input: [delta, a]
         
-        # Symbolic variables
-        s = ca.SX.sym('s')
-        e_y = ca.SX.sym('e_y') 
-        e_ψ = ca.SX.sym('e_ψ')
-        v = ca.SX.sym('v')
+        # Use the curvilinear dynamics symbolic variables
+        x = self.curvilinear_dynamics.state
+        u = self.curvilinear_dynamics.input
+        kappa = self.curvilinear_dynamics.kappa
         
-        x = ca.vertcat(s, e_y, e_ψ, v)
-        
-        delta = ca.SX.sym('delta')
-        a = ca.SX.sym('a')
-        u = ca.vertcat(delta, a)
-        
-        # Path curvature as parameter
-        kappa = ca.SX.sym('kappa')
-        p = ca.vertcat(kappa)
-        
-        # Get curvilinear dynamics
-        curv_dynamics_func = self.vehicle_model.get_curvilinear_dynamics(self.dt)
-        x_next = curv_dynamics_func(x, u, kappa)
+        # Get discrete curvilinear dynamics
+        discrete_dynamics = self.curvilinear_dynamics.get_discrete_dynamics(self.dt)
+        x_next = discrete_dynamics(x, u, kappa)
         
         # Set model - use explicit discrete dynamics
         ocp.model.f_expl_expr = x_next
         ocp.model.x = x
         ocp.model.u = u
-        ocp.model.p = p
+        ocp.model.p = ca.vertcat(kappa)
         ocp.model.name = 'curvilinear_vehicle'
         
         # Dimensions MUST be set first
@@ -138,19 +134,19 @@ class MPCController:
         ocp.cost.cost_type = 'LINEAR_LS'
         ocp.cost.cost_type_e = 'LINEAR_LS'
         
-        # Output selection matrices - use correct acados names!
-        ocp.cost.Vx = np.eye(4)  # Select all 4 states (not Vy!)
-        ocp.cost.Vu = np.zeros((4, 2))  # No input in output (not Vz!)
+        # Output selection matrices
+        ocp.cost.Vx = np.eye(4)  # Select all 4 states
+        ocp.cost.Vu = np.zeros((4, 2))  # No input in output
         
         # Cost weights
         ocp.cost.W = self.Q      # 4x4 matrix for 4 outputs
         
         # Terminal cost
-        ocp.cost.Vx_e = np.eye(4)  # Use Vx_e not Vy_e
+        ocp.cost.Vx_e = np.eye(4)
         ocp.cost.W_e = self.Q_terminal
         
         # Constraints
-        constraints = self._handle_constraints(self.vehicle_model.get_constraints())
+        constraints = self._handle_constraints(self.curvilinear_dynamics.get_constraints())
         
         ocp.constraints.lbu = np.array([constraints['steering_min'], 
                                        constraints['acceleration_min']])
@@ -158,10 +154,11 @@ class MPCController:
                                        constraints['acceleration_max']])
         ocp.constraints.idxbu = np.array([0, 1])
         
-        # State constraints
-        ocp.constraints.lbx = np.array([-np.inf, -5.0, -np.pi, constraints['velocity_min']])  # [s, e_y, e_ψ, v]
-        ocp.constraints.ubx = np.array([np.inf, 5.0, np.pi, constraints['velocity_max']])
-        ocp.constraints.idxbx = np.array([1, 2, 3])  # constrain e_y, e_ψ, v
+        # State constraints for curvilinear coordinates
+        # [s, d, theta_e, v] - constrain lateral deviation, heading error, and velocity
+        ocp.constraints.lbx = np.array([-5.0, -np.pi, constraints['velocity_min']])  # [d, theta_e, v]
+        ocp.constraints.ubx = np.array([5.0, np.pi, constraints['velocity_max']])
+        ocp.constraints.idxbx = np.array([1, 2, 3])  # constrain d, theta_e, v (not s)
         
         # Initial condition constraint
         ocp.constraints.x0 = np.zeros(4)

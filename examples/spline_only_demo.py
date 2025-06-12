@@ -14,7 +14,7 @@ import os
 # Add parent directory to path to import modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from spline_fit import CubicSpline, SplineFitter, CurvilinearSpline
+from spline_fit import CubicSpline, ChordLengthParametricSpline2D, CurvilinearCoordinates
 
 
 def main():
@@ -47,17 +47,17 @@ def main():
     print(f"   Evaluated spline at {len(t_eval)} points")
     print(f"   Max curvature: {np.max(np.abs(curvatures)):.4f}")
     
-    # Test SplineFitter class
-    print("\n3. Testing SplineFitter class...")
-    spline_fitter = SplineFitter(waypoints)
+    # Test ChordLengthParametricSpline2D class
+    print("\n3. Testing ChordLengthParametricSpline2D class...")
+    spline_fitter = ChordLengthParametricSpline2D(waypoints)
     trajectory = spline_fitter.generate_trajectory(num_points=100)
     
     print(f"   Path length: {spline_fitter.get_path_length():.2f}")
     print(f"   Generated trajectory with {len(trajectory['positions'])} points")
     
-    # Test CurvilinearSpline class
-    print("\n4. Testing CurvilinearSpline class...")
-    curv_spline = CurvilinearSpline(waypoints)
+    # Test CurvilinearCoordinates class
+    print("\n4. Testing CurvilinearCoordinates class...")
+    curv_spline = CurvilinearCoordinates(waypoints)
     
     # Test coordinate transformations
     test_point = np.array([10, 5])
@@ -93,11 +93,11 @@ def main():
     ax1.grid(True, alpha=0.3)
     ax1.axis('equal')
     
-    # Plot 2: SplineFitter trajectory
+    # Plot 2: ChordLengthParametricSpline2D trajectory
     ax2 = axes[0, 1]
     ax2.plot(waypoints[:, 0], waypoints[:, 1], 'ro', markersize=8, label='Waypoints')
     ax2.plot(trajectory['positions'][:, 0], trajectory['positions'][:, 1], 
-             'g-', linewidth=2, label='SplineFitter')
+             'g-', linewidth=2, label='ChordLengthParametricSpline2D')
     
     # Add arrows to show direction
     for i in range(0, len(trajectory['positions']), 10):
@@ -109,7 +109,7 @@ def main():
     
     ax2.set_xlabel('X [m]')
     ax2.set_ylabel('Y [m]')
-    ax2.set_title('SplineFitter with Direction')
+    ax2.set_title('ChordLengthParametricSpline2D with Direction')
     ax2.legend()
     ax2.grid(True, alpha=0.3)
     ax2.axis('equal')
