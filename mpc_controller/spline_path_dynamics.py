@@ -198,7 +198,13 @@ class SplinePathDynamics(CurvilinearDynamics):
         
         # State derivatives - standard curvilinear formulation
         s_dot = self.v * ca.cos(self.e_ψ + beta) / denom  # Standard curvilinear dynamics
+        
+        # Compute the raw u_dot
         u_dot = s_dot / self.ds_du  # Convert arc-length rate to chord-length parameter rate
+        
+        # Note: State bounds (u_min, u_max) are handled as proper constraints in the MPC formulation,
+        # not as saturations in the dynamics equations. The dynamics should remain unsaturated.
+        
         e_y_dot = self.v * ca.sin(self.e_ψ + beta)
         e_ψ_dot = (self.v * ca.sin(beta) / L) - (self.kappa * s_dot)
         v_dot = self.a
@@ -266,6 +272,15 @@ class SplinePathDynamics(CurvilinearDynamics):
         self._current_dt = dt
         
         return discrete_dynamics
+    
+    def get_continuous_dynamics(self) -> ca.Function:
+        """
+        Get continuous-time spline path dynamics function.
+        
+        Returns:
+            CasADi function for continuous spline path dynamics (state derivatives)
+        """
+        return self.dynamics_func
     
     def update_spline_parameters(self, solver):
         """Update spline parameters in the acados solver."""
@@ -388,28 +403,52 @@ class SplinePathDynamics(CurvilinearDynamics):
         # Use the existing Newton's method in CurvilinearCoordinates to find the closest point
         # Note: CurvilinearCoordinates.cartesian_to_curvilinear returns (u, d) 
         # where u is the chord-length parameter and d is the lateral distance
-        u, e_y = self.spline_coords.cartesian_to_curvilinear(np.array([x, y]))
-        
-        # Convert chord-length parameter to arc-length using the proper method
-        s = self.spline_coords.chord_to_arc_length(u)
-        
-        # Get reference heading at this chord-length parameter using numerical evaluation
-        tangent_result = self.spline_tangent(u, self.knots_np, self.coeffs_x_np, self.coeffs_y_np)
-        
-        # Extract tangent components (handle CasADi DM if needed)
-        if hasattr(tangent_result, 'full'):
-            tangent = tangent_result.full().flatten()
-        else:
-            tangent = np.array(tangent_result).flatten()
-        
-        # Calculate reference heading
-        ref_heading = np.arctan2(tangent[1], tangent[0])
-        
-        # Calculate heading error
-        e_ψ = theta - ref_heading
-        e_ψ = np.arctan2(np.sin(e_ψ), np.cos(e_ψ))  # Normalize to [-π, π]
-        
-        return np.array([s, u, e_y, e_ψ, v])
+        try:
+            u, e_y = self.spline_coords.cartesian_to_curvilinear(np.array([x, y]))
+            
+            # Clamp u to valid range
+            u_min = self.spline_coords.u_values[0]
+            u_max = self.spline_coords.u_values[-1]
+            u_clamped = np.clip(u, u_min, u_max)
+            
+            if abs(u - u_clamped) > 1e-6:
+                print(f"WARNING: cartesian_to_curvilinear u={u:.6f} clamped to [{u_min:.6f}, {u_max:.6f}] -> {u_clamped:.6f}")
+            
+            # Convert chord-length parameter to arc-length using the proper method
+            s = self.spline_coords.chord_to_arc_length(u_clamped)
+            
+            # Get reference heading at this chord-length parameter using numerical evaluation
+            tangent_result = self.spline_tangent(u_clamped, self.knots_np, self.coeffs_x_np, self.coeffs_y_np)
+            
+            # Extract tangent components (handle CasADi DM if needed)
+            if hasattr(tangent_result, 'full'):
+                tangent = tangent_result.full().flatten()
+            else:
+                tangent = np.array(tangent_result).flatten()
+            
+            # Check for zero tangent
+            tangent_norm = np.linalg.norm(tangent)
+            if tangent_norm < 1e-6:
+                print(f"WARNING: Zero tangent in cartesian_to_curvilinear at u={u_clamped:.6f}")
+                # For straight line, use default heading
+                ref_heading = 0.0
+            else:
+                # Calculate reference heading
+                ref_heading = np.arctan2(tangent[1], tangent[0])
+            
+            # Calculate heading error
+            e_ψ = theta - ref_heading
+            e_ψ = np.arctan2(np.sin(e_ψ), np.cos(e_ψ))  # Normalize to [-π, π]
+            
+            return np.array([s, u_clamped, e_y, e_ψ, v])
+            
+        except Exception as e:
+            print(f"ERROR: cartesian_to_curvilinear failed for point [{x:.3f}, {y:.3f}]: {e}")
+            # Return a safe fallback state
+            # Assume we're at the end of the path if conversion fails
+            u_max = self.spline_coords.u_values[-1]
+            s_max = self.spline_coords.path_length
+            return np.array([s_max, u_max, 0.0, 0.0, v])
     
     def spline_curvilinear_to_cartesian(self, spline_curvilinear_state: np.ndarray) -> np.ndarray:
         """
@@ -423,21 +462,44 @@ class SplinePathDynamics(CurvilinearDynamics):
         """
         s, u, e_y, e_ψ, v = spline_curvilinear_state
         
-        # Get reference position using the chord-length parameter u
-        ref_pos = self.spline_position(u, self.knots_np, self.coeffs_x_np, self.coeffs_y_np)
+        # Clamp u to valid spline parameter range to prevent extrapolation issues
+        u_min = self.spline_coords.u_values[0]
+        u_max = self.spline_coords.u_values[-1]
+        u_clamped = np.clip(u, u_min, u_max)
+        
+        if abs(u - u_clamped) > 1e-6:
+            print(f"WARNING: u={u:.6f} clamped to [{u_min:.6f}, {u_max:.6f}] -> {u_clamped:.6f}")
+        
+        # Get reference position using the clamped chord-length parameter
+        ref_pos = self.spline_position(u_clamped, self.knots_np, self.coeffs_x_np, self.coeffs_y_np)
         ref_pos = np.array([float(ref_pos[0]), float(ref_pos[1])])
         
-        # Get reference heading using the chord-length parameter u
-        tangent = self.spline_tangent(u, self.knots_np, self.coeffs_x_np, self.coeffs_y_np)
+        # Get reference heading using the clamped chord-length parameter
+        tangent = self.spline_tangent(u_clamped, self.knots_np, self.coeffs_x_np, self.coeffs_y_np)
         tangent = np.array([float(tangent[0]), float(tangent[1])])
         tangent_norm = np.linalg.norm(tangent)
         
         # Safety check for zero tangent
         if tangent_norm < 1e-6:
-            print(f"WARNING: Zero tangent vector at u={u}")
-            # Use previous valid tangent or default
-            ref_heading = 0.0
-            normal = np.array([0.0, 1.0])
+            print(f"WARNING: Zero tangent vector at u={u_clamped:.6f} (original u={u:.6f})")
+            # For straight line paths, use default heading
+            if u_clamped >= u_max:
+                # At end of path, use the heading from just before the end
+                u_safe = u_max - 1e-3
+                tangent_safe = self.spline_tangent(u_safe, self.knots_np, self.coeffs_x_np, self.coeffs_y_np)
+                tangent_safe = np.array([float(tangent_safe[0]), float(tangent_safe[1])])
+                tangent_safe_norm = np.linalg.norm(tangent_safe)
+                if tangent_safe_norm > 1e-6:
+                    ref_heading = np.arctan2(tangent_safe[1], tangent_safe[0])
+                    normal = np.array([-tangent_safe[1]/tangent_safe_norm, tangent_safe[0]/tangent_safe_norm])
+                else:
+                    # Fallback for straight line: heading = 0, normal = [0, 1]
+                    ref_heading = 0.0
+                    normal = np.array([0.0, 1.0])
+            else:
+                # Fallback for straight line: heading = 0, normal = [0, 1]
+                ref_heading = 0.0
+                normal = np.array([0.0, 1.0])
         else:
             ref_heading = np.arctan2(tangent[1], tangent[0])
             normal = np.array([-tangent[1]/tangent_norm, tangent[0]/tangent_norm])

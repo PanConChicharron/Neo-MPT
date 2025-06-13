@@ -24,11 +24,128 @@ def create_test_path():
         [25, 0],
         [30, 3]
     ])
+    return waypoints
+
+def create_straight_line_path():
+    """Create a simple straight-line test path for debugging boundary behavior."""
+    # Create a straight line path - this should have ds/du = 1.0 everywhere
+    waypoints = np.array([
+        [0, 0],
+        [5, 0],
+        [10, 0],
+        [15, 0],
+        [20, 0],
+        [25, 0],
+        [30, 0]
+    ])
+    return waypoints
+
+def create_racetrack_path():
+    #faulty
+    """Create a race-track style pseudo-ellipse path with straight sections and curved ends."""
+    # Race-track style pseudo-ellipse waypoints
+    # Creates an oval with straight sections and curved ends
+    waypoints = np.array([
+        # Bottom straight section (start)
+        [0, 0],
+        [5, 0],
+        [10, 0],
+        [15, 0],
+        [20, 0],
+        
+        # Right curved section (turn 1)
+        [25, 2],
+        [28, 5],
+        [30, 8],
+        [30, 12],
+        
+        # Top straight section
+        [28, 15],
+        [25, 16],
+        [20, 16],
+        [15, 16],
+        [10, 16],
+        [5, 16],
+        [0, 16],
+        
+        # Left curved section (turn 2)
+        [-3, 14],
+        [-5, 10],
+        [-5, 6],
+        [-3, 2],
+        
+        # Return to start
+        [0, 0]
+    ])
+    return waypoints
+
+def create_challenging_track():
+    """Create a longer, more challenging race track with multiple complex turns."""
+    # Complex race track with chicanes, hairpins, and varying radius turns
+    waypoints = np.array([
+        # Start/finish straight
+        [0, 0],
+        [10, 0],
+        [20, 0],
+        [30, 0],
+        
+        # Turn 1: Fast right-hander
+        [40, -3],
+        [50, -8],
+        [60, -10],
+        [70, -8],
+        
+        # Short straight into chicane
+        [80, -5],
+        [90, -2],
+        
+        # Chicane section (S-curves)
+        [95, 2],
+        [100, 6],
+        [105, 4],
+        [110, 0],
+        [115, -4],
+        [120, -2],
+        
+        # Long straight
+        [130, 0],
+        [140, 2],
+        [150, 4],
+        [160, 6],
+        
+        # Hairpin turn (180-degree)
+        [165, 10],
+        [168, 15],
+        [170, 20],
+        [168, 25],
+        [165, 30],
+        [160, 32],
+        [150, 30],
+        [140, 28],
+        [130, 26],
+        
+        # Back straight with slight curves
+        [120, 24],
+        [110, 22],
+        [100, 20],
+        [90, 18],
+        [80, 16],
+        
+        # Complex turn sequence
+        [70, 12],
+        [60, 8],
+        [50, 6],
+        [40, 8],
+        [30, 12],
+        [20, 14],
+        [10, 12],
+        [5, 8],
+        [2, 4],
+        
+        # # Return to start
+        # [0, 0]
+    ])
     
-    print("\nDEBUG: Test path created")
-    print(f"DEBUG: Number of waypoints: {len(waypoints)}")
-    print(f"DEBUG: First 5 waypoints:\n{waypoints[:5]}")
-    print(f"DEBUG: Last 5 waypoints:\n{waypoints[-5:]}")
     return waypoints
 
 def get_local_waypoints(global_waypoints, current_position, horizon=15):
@@ -36,11 +153,6 @@ def get_local_waypoints(global_waypoints, current_position, horizon=15):
     # Find closest waypoint index
     dists = np.linalg.norm(global_waypoints - current_position, axis=1)
     closest_idx = np.argmin(dists)
-    
-    print(f"\nDEBUG: Current position: {current_position}")
-    print(f"DEBUG: Closest waypoint index: {closest_idx}")
-    print(f"DEBUG: Closest waypoint: {global_waypoints[closest_idx]}")
-    print(f"DEBUG: Distance to closest: {dists[closest_idx]}")
     
     # Calculate chord lengths
     dx = np.diff(global_waypoints[:, 0])
@@ -60,10 +172,6 @@ def get_local_waypoints(global_waypoints, current_position, horizon=15):
     end_idx = closest_idx + n_after + 1
     local_waypoints = global_waypoints[start_idx:end_idx]
     local_s_values = s_values[start_idx:end_idx]
-    
-    print(f"DEBUG: Selected waypoints shape: {local_waypoints.shape}")
-    print(f"DEBUG: Selected waypoints:\n{local_waypoints}")
-    print(f"DEBUG: Selected s_values:\n{local_s_values}")
     
     # If we need more points, linearly extend the path
     if len(local_waypoints) < n_waypoints:
@@ -88,10 +196,6 @@ def get_local_waypoints(global_waypoints, current_position, horizon=15):
         extra_points = np.column_stack((x_values, y_values))
         local_waypoints = np.vstack([local_waypoints, extra_points])
         local_s_values = np.concatenate([local_s_values, s_values_extra])
-    
-    print(f"DEBUG: Final waypoints shape: {local_waypoints.shape}")
-    print(f"DEBUG: Final waypoints:\n{local_waypoints}")
-    print(f"DEBUG: Final s_values:\n{local_s_values}")
     
     return local_waypoints
 
@@ -150,13 +254,24 @@ def plot_spline_debug(spline_fitter):
     plt.tight_layout()
     plt.show()
 
-def run_simulation():
-    # Create test path
-    waypoints = create_test_path()
+def run_simulation(path_type="curved"):
+    # Create test path based on type
+    if path_type == "straight":
+        waypoints = create_straight_line_path()
+        print("\n=== RUNNING STRAIGHT-LINE TEST ===")
+    elif path_type == "curved":
+        waypoints = create_test_path()
+        print("\n=== RUNNING CURVED PATH TEST ===")
+    elif path_type == "racetrack":
+        waypoints = create_racetrack_path()
+        print("\n=== RUNNING RACE TRACK TEST ===")
+    elif path_type == "challenging":
+        waypoints = create_challenging_track()
+        print("\n=== RUNNING CHALLENGING TRACK TEST ===")
+    else:
+        raise ValueError("Invalid path type. Use 'straight', 'curved', 'racetrack', 'challenging', or 'both'.")
+        
     global_waypoints = waypoints  # Store global waypoints
-    
-    print("\nDEBUG: Global waypoints shape:", global_waypoints.shape)
-    print("DEBUG: First few global waypoints:\n", global_waypoints[:5])
     
     # Create spline path with chord-length parameterization
     spline_fitter = SplineFitter()
@@ -167,19 +282,16 @@ def run_simulation():
     
     spline_coords = CurvilinearCoordinates(waypoints)
     
-    print("\nDEBUG: Path length:", spline.path_length)
-    print("DEBUG: First few waypoints:\n", waypoints[:5])
-    
     # Create vehicle model
     vehicle_model = VehicleModel(
         wheelbase_front=1.0,
         wheelbase_rear=1.0,
-        max_steering=np.pi/4,
-        min_steering=-np.pi/4,
+        max_steering=np.pi/3,
+        min_steering=-np.pi/3,
         max_acceleration=2.0,
-        min_acceleration=-2.0,
+        min_acceleration=-2.0,  # Increased braking capability for end-of-path approach
         max_velocity=20.0,
-        min_velocity=0.0
+        min_velocity=-20.0        # Allow very slow speeds to prevent infeasibility
     )
     
     # Create spline path dynamics
@@ -192,45 +304,29 @@ def run_simulation():
         dt=0.1
     )
     
-    # Set more conservative cost weights
-    Q = np.diag([
-        0.1,    # s (progress) - very small weight initially
-        0.0,    # u (spline parameter) - not directly penalized
-        10.0,   # e_y (cross-track error) - moderate weight
-        1.0,    # e_ψ (heading error) - small weight
-        0.1     # v (velocity) - very small weight
-    ])
+    # Set cost weights (must be done before set_path)
+    state_weights = np.array([1.0, 0.1, 1.0, 0.5, 1.0])  # [s, u, e_y, e_ψ, v] - velocity weight = 0.0
+    input_weights = np.array([0.1, 0.125])  # [delta, a] - very low acceleration penalty
+    terminal_weights = np.array([2.0, 0.1, 2.0, 1.0, 1.0])  # [s, u, e_y, e_ψ, v] - terminal velocity weight = 0.0
     
-    R = np.diag([
-        0.1,    # steering - very small weight initially
-        0.01    # acceleration - very small weight initially
-    ])
-    
-    Q_terminal = np.diag([
-        1.0,    # s (progress)
-        0.0,    # u (spline parameter)
-        20.0,   # e_y (cross-track error)
-        2.0,    # e_ψ (heading error)
-        0.2     # v (velocity)
-    ])
-    
-    mpc.set_weights(Q, R, Q_terminal)
+    mpc.set_weights(state_weights, input_weights, terminal_weights)
     mpc.set_path(spline_dynamics)
     
     # Initial state [s, u, e_y, e_ψ, v]
-    initial_state = np.array([
-        0.1,    # s: start slightly ahead
-        0.1,    # u: start slightly ahead
-        0.0,    # e_y: on path
-        0.0,    # e_ψ: aligned with path
-        0.5     # v: very slow initial velocity
-    ])
+    # Start near the beginning of the path with proper s/u relationship
+    initial_u = 0.0  # chord-length parameter
+    initial_s = spline_coords.chord_to_arc_length(initial_u)  # convert to arc-length
     
-    print("\nDEBUG: Initial state:", initial_state)
+    initial_state = np.array([
+        initial_s,  # s: arc-length progress
+        initial_u,  # u: chord-length parameter
+        0.0,        # e_y: on path
+        0.0,        # e_ψ: aligned with path
+        0.0         # v: moderate initial velocity to 2 m/s
+    ])
     
     # Get initial position by evaluating spline at u=0.1 using numerical values
     initial_pos = spline_dynamics.spline_coords.curvilinear_to_cartesian(initial_state[1], 0.0)
-    print("DEBUG: Initial position:", initial_pos)
     
     # Print initial state
     print("\n=== DEBUG: Initial State ===")
@@ -242,38 +338,9 @@ def run_simulation():
     print("\n=== DEBUG: Constraints ===")
     for k, v in constraints.items():
         print(f"{k}: {v}")
-
-    # Print cost weights
-    print("\n=== DEBUG: Cost Weights ===")
-    print(f"Q: {mpc.Q}")
-    print(f"R: {mpc.R}")
-    
-    # Debug: Discrete dynamics from initial state with zero input
-    print("\n=== DEBUG: Discrete dynamics from initial state with zero input ===")
-    zero_input = np.zeros(2)
-    params = np.concatenate([
-        spline_dynamics.knots_np,
-        spline_dynamics.coeffs_x_np.flatten(),
-        spline_dynamics.coeffs_y_np.flatten()
-    ])
-    discrete_dyn = spline_dynamics.get_discrete_dynamics(mpc.dt)
-    next_state = discrete_dyn(initial_state, zero_input, params)
-    print("Next state:", np.array(next_state).flatten())
-
-    # Debug: Trivial reference trajectory (all steps = initial state)
-    trivial_reference_trajectory = {
-        's_values': np.ones(mpc.N + 1) * initial_state[0],
-        'velocities': np.ones(mpc.N + 1) * initial_state[4]
-    }
-    result = mpc.solve(initial_state, trivial_reference_trajectory)
-    print("\n=== DEBUG: Trivial reference solve result ===")
-    print("Solver status:", result['solver_status'])
-    print("Optimal input:", result['optimal_input'])
-    print("Predicted trajectory:", result['predicted_trajectory'])
-    import sys; sys.exit(0)
     
     # Simulation parameters
-    sim_time = 30.0  # seconds
+    sim_time = 250.0  # seconds
     dt = mpc.dt
     n_steps = int(sim_time / dt)
     
@@ -292,23 +359,103 @@ def run_simulation():
     for step in range(n_steps):
         print(f"\nStep {step + 1}/{n_steps}")
         
+        # Check if we've reached the end of the path
+        current_s = states[step][0]
+        path_length = spline_dynamics.spline_coords.path_length
+        remaining_path = path_length - current_s
+        
+        print(f"  Current s: {current_s:.2f} m, Path length: {path_length:.2f} m, Remaining: {remaining_path:.2f} m")
+        
+        # Stop simulation if we've reached the end of the path
+        if remaining_path <= 0.1:  # Within 10cm of the end
+            print(f"🏁 Reached end of path! Stopping simulation at step {step}")
+            print(f"   Final position: s={current_s:.2f} m (path length: {path_length:.2f} m)")
+            # Trim arrays to actual simulation length
+            states = states[:step+1]
+            inputs = inputs[:step]
+            break
+        
         # Get current position
         current_pos = spline_dynamics.spline_curvilinear_to_cartesian(states[step])[:2]
         
-        # Get local waypoints
-        local_waypoints = get_local_waypoints(global_waypoints, current_pos)
+        # Check if coordinate transformation is failing (position stuck or invalid)
+        if step > 0:
+            prev_pos = spline_dynamics.spline_curvilinear_to_cartesian(states[step-1])[:2]
+            pos_change = np.linalg.norm(current_pos - prev_pos)
+            if pos_change < 1e-6 and states[step][4] > 0.1:  # Position not changing but velocity > 0
+                print(f"⚠️  WARNING: Vehicle position stuck at {current_pos}, but velocity = {states[step][4]:.2f} m/s")
+                print(f"   This indicates coordinate transformation failure. Stopping simulation.")
+                states = states[:step+1]
+                inputs = inputs[:step]
+                break
         
-        # Update spline parameters
-        mpc.update_waypoints(local_waypoints)
+        # Update spline parameters only for non-racetrack paths
+        # For racetrack and challenging track, we use the full closed-loop path throughout
+        if path_type not in ["racetrack", "challenging"]:
+            # Get local waypoints
+            local_waypoints = get_local_waypoints(global_waypoints, current_pos)
+            
+            # Update spline parameters
+            mpc.update_waypoints(local_waypoints)
         
-        # Create reference trajectory
-        s_values = np.linspace(states[step][0], states[step][0] + 4.0, mpc.N + 1)
-        velocities = np.ones(mpc.N + 1) * 0.5  # Constant velocity reference
+        # Create reference trajectory that respects path bounds
+        current_s = states[step][0]
+        path_length = spline_dynamics.spline_coords.path_length
+        
+        # Calculate how much path is remaining
+        remaining_path = path_length - current_s
+        
+        # Set reference horizon based on remaining path
+        if remaining_path > 4.0:
+            # Normal case: look ahead 4.0 meters
+            s_end = current_s + 4.0
+        else:
+            # Near end of path: just go to the end and maintain that position
+            s_end = path_length
+        
+        s_values = np.linspace(current_s, s_end, mpc.N + 1)
+        
+        # Improved velocity planning for end-of-path approach
+        current_velocity = states[step][4]
+        
+        if remaining_path < 5.0:
+            # More aggressive braking when approaching the end
+            # Calculate required deceleration to stop at the end
+            # v² = v₀² + 2as  =>  a = (v² - v₀²) / (2s)
+            # To reach 0.5 m/s at the end: a = (0.5² - v₀²) / (2 * remaining_path)
+            target_final_velocity = 5  # m/s
+            if remaining_path > 0.1:  # Avoid division by zero
+                required_decel = (target_final_velocity**2 - current_velocity**2) / (2 * remaining_path)
+                # Limit to maximum braking capability
+                required_decel = max(required_decel, -2.0)  # Don't exceed -2.0 m/s² braking
+                
+                # Set target velocity based on physics-based deceleration
+                # v = sqrt(v₀² + 2as) where s is the distance traveled in prediction horizon
+                prediction_distance = min(2.0, remaining_path)  # Look ahead 2m or to end
+                target_velocity = max(0.5, np.sqrt(max(0, current_velocity**2 + 2 * required_decel * prediction_distance)))
+                
+                print(f"  🛑 End approach: remaining={remaining_path:.2f}m, current_v={current_velocity:.2f}m/s")
+                print(f"     Required decel={required_decel:.2f}m/s², target_v={target_velocity:.2f}m/s")
+            else:
+                target_velocity = 0.5
+        elif remaining_path < 10.0:
+            # Moderate slowdown when getting close
+            target_velocity = 3.0
+        else:
+            # Normal velocity
+            target_velocity = 5.0
+            
+        velocities = np.ones(mpc.N + 1) * target_velocity
         
         reference_trajectory = {
             's_values': s_values,
             'velocities': velocities
         }
+        
+        # Debug: Print reference vs current velocity every 10 steps
+        if step % 10 == 0:
+            print(f"  Reference velocity: {target_velocity:.2f} m/s, Current velocity: {states[step][4]:.2f} m/s")
+            print(f"  Velocity error: {target_velocity - states[step][4]:.2f} m/s")
         
         # Solve MPC problem
         result = mpc.solve(states[step], reference_trajectory)
@@ -322,6 +469,11 @@ def run_simulation():
         
         # Apply first control input
         inputs[step] = result['optimal_input']
+        
+        # Debug: Print control inputs every 10 steps
+        if step % 10 == 0 or step > n_steps - 20:  # Print first few and last 20 steps
+            print(f"  Control input: steering={inputs[step][0]:.4f} rad ({np.rad2deg(inputs[step][0]):.2f}°), acceleration={inputs[step][1]:.4f} m/s²")
+            print(f"  Current velocity: {states[step][4]:.2f} m/s, Current s: {states[step][0]:.2f} m")
         
         # Simulate one step
         states[step + 1] = spline_dynamics.simulate_step(states[step], inputs[step], dt)
@@ -352,8 +504,8 @@ def plot_results(states, inputs, dt, spline_dynamics):
     # Create time vector
     t = np.arange(len(states)) * dt
     
-    # Create figure with subplots
-    fig, axs = plt.subplots(3, 2, figsize=(15, 10))
+    # Create figure with subplots - changed to 3x2 to add velocity plot
+    fig, axs = plt.subplots(3, 2, figsize=(15, 12))
     
     # Plot path and vehicle trajectory
     axs[0, 0].set_title('Path and Vehicle Trajectory')
@@ -365,6 +517,29 @@ def plot_results(states, inputs, dt, spline_dynamics):
     # Plot vehicle trajectory
     vehicle_points = np.array([spline_dynamics.spline_curvilinear_to_cartesian(state)[:2] for state in states])
     axs[0, 0].plot(vehicle_points[:, 0], vehicle_points[:, 1], 'r-', label='Vehicle')
+    
+    # Mark initial pose with heading
+    initial_state = states[0]
+    initial_pos = vehicle_points[0]
+    # Get heading from spline dynamics
+    initial_heading = spline_dynamics.spline_coords.get_heading(initial_state[0])  # heading at s position
+    arrow_length = 2.0
+    initial_dx = arrow_length * np.cos(initial_heading)
+    initial_dy = arrow_length * np.sin(initial_heading)
+    axs[0, 0].arrow(initial_pos[0], initial_pos[1], initial_dx, initial_dy, 
+                   head_width=0.5, head_length=0.8, fc='green', ec='green', linewidth=2)
+    axs[0, 0].plot(initial_pos[0], initial_pos[1], 'go', markersize=8, label='Start')
+    
+    # Mark final pose with heading
+    final_state = states[-1]
+    final_pos = vehicle_points[-1]
+    final_heading = spline_dynamics.spline_coords.get_heading(final_state[0])  # heading at s position
+    final_dx = arrow_length * np.cos(final_heading)
+    final_dy = arrow_length * np.sin(final_heading)
+    axs[0, 0].arrow(final_pos[0], final_pos[1], final_dx, final_dy, 
+                   head_width=0.5, head_length=0.8, fc='red', ec='red', linewidth=2)
+    axs[0, 0].plot(final_pos[0], final_pos[1], 'rs', markersize=8, label='End')
+    
     axs[0, 0].legend()
     axs[0, 0].grid(True)
     axs[0, 0].axis('equal')
@@ -377,26 +552,44 @@ def plot_results(states, inputs, dt, spline_dynamics):
     axs[0, 1].legend()
     axs[0, 1].grid(True)
     
-    # Plot inputs
-    axs[1, 0].set_title('Steering Angle')
-    axs[1, 0].plot(t[:-1], np.rad2deg(inputs[:, 0]), 'b-')
-    axs[1, 0].set_ylabel('Steering [deg]')
+    # Plot velocity - NEW
+    axs[1, 0].set_title('Velocity Tracking')
+    axs[1, 0].plot(t, states[:, 4], 'b-', linewidth=2, label='Actual Velocity')
+    axs[1, 0].set_ylabel('Velocity [m/s]')
+    axs[1, 0].set_xlabel('Time [s]')
+    axs[1, 0].legend()
     axs[1, 0].grid(True)
     
-    axs[1, 1].set_title('Acceleration')
-    axs[1, 1].plot(t[:-1], inputs[:, 1], 'r-')
-    axs[1, 1].set_ylabel('Acceleration [m/s²]')
-    axs[1, 1].grid(True)
+    # Plot inputs
+    axs[1, 1].set_title('Control Inputs')
+    ax_steer = axs[1, 1]
+    ax_accel = ax_steer.twinx()
+    
+    line1 = ax_steer.plot(t[:-1], np.rad2deg(inputs[:, 0]), 'b-', label='Steering Angle')
+    line2 = ax_accel.plot(t[:-1], inputs[:, 1], 'r-', label='Acceleration')
+    
+    ax_steer.set_ylabel('Steering [deg]', color='b')
+    ax_accel.set_ylabel('Acceleration [m/s²]', color='r')
+    ax_steer.set_xlabel('Time [s]')
+    
+    # Combine legends
+    lines = line1 + line2
+    labels = [l.get_label() for l in lines]
+    ax_steer.legend(lines, labels, loc='upper right')
+    
+    ax_steer.grid(True)
     
     # Plot errors
     axs[2, 0].set_title('Lateral Error')
     axs[2, 0].plot(t, states[:, 2], 'b-')
     axs[2, 0].set_ylabel('Lateral Error [m]')
+    axs[2, 0].set_xlabel('Time [s]')
     axs[2, 0].grid(True)
     
     axs[2, 1].set_title('Heading Error')
     axs[2, 1].plot(t, states[:, 3], 'r-')
     axs[2, 1].set_ylabel('Heading Error [rad]')
+    axs[2, 1].set_xlabel('Time [s]')
     axs[2, 1].grid(True)
     
     plt.tight_layout()
@@ -459,5 +652,65 @@ def plot_results_advanced(states, inputs, spline_coords, dt):
     plt.tight_layout()
     plt.show()
 
+def run_both_tests():
+    """Run both curved and straight-line tests for comparison."""
+    print("="*60)
+    print("RUNNING BOTH TEST CASES")
+    print("="*60)
+    
+    # Run straight-line test first (simpler case)
+    print("\n" + "="*40)
+    print("1. STRAIGHT-LINE TEST")
+    print("="*40)
+    try:
+        result_straight = run_simulation("straight")
+        print("✅ Straight-line test completed successfully")
+    except Exception as e:
+        print(f"❌ Straight-line test failed: {e}")
+        result_straight = None
+    
+    # Run curved path test
+    print("\n" + "="*40)
+    print("2. CURVED PATH TEST")
+    print("="*40)
+    try:
+        result_curved = run_simulation("curved")
+        print("✅ Curved path test completed successfully")
+    except Exception as e:
+        print(f"❌ Curved path test failed: {e}")
+        result_curved = None
+    
+    return {
+        'straight': result_straight,
+        'curved': result_curved
+    }
+
 if __name__ == "__main__":
-    run_simulation() 
+    import sys
+    
+    # Check command line arguments for test selection
+    if len(sys.argv) > 1:
+        test_type = sys.argv[1].lower()
+        if test_type == "straight":
+            print("Running straight-line test only...")
+            run_simulation("straight")
+        elif test_type == "curved":
+            print("Running curved path test only...")
+            run_simulation("curved")
+        elif test_type == "racetrack":
+            print("Running race track test only...")
+            run_simulation("racetrack")
+        elif test_type == "challenging":
+            print("Running challenging track test only...")
+            run_simulation("challenging")
+        elif test_type == "both":
+            print("Running both tests...")
+            run_both_tests()
+        else:
+            print("Usage: python test_spline_mpc.py [straight|curved|racetrack|challenging|both]")
+            print("Running default curved path test...")
+            run_simulation("curved")
+    else:
+        # Default: run straight-line test for debugging boundary behavior
+        print("Running straight-line test (default for debugging)...")
+        run_simulation("straight") 
