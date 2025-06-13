@@ -19,6 +19,9 @@ class ChordLengthParametricSpline2D:
     - Trajectory generation with specified resolution
     - Visualization and analysis tools
     - Path queries and utilities
+    
+    Note: Uses 'u' for chord-length parameter to distinguish from arc-length 's'.
+    The actual path length is computed using RK4 integration for accurate arc length.
     """
     
     def __init__(self, waypoints: np.ndarray, closed_path: bool = False):
@@ -33,7 +36,7 @@ class ChordLengthParametricSpline2D:
         self.closed_path = closed_path
         self.spline = None
         self.path_length = None
-        self.s_values = None
+        self.u_values = None  # Chord-length parameters
         
         if self.waypoints.shape[1] != 2:
             raise ValueError("Waypoints must be of shape (N, 2) for [x, y] coordinates")
@@ -50,54 +53,57 @@ class ChordLengthParametricSpline2D:
             dy = self.waypoints[i, 1] - self.waypoints[i-1, 1]
             distances[i] = distances[i-1] + np.sqrt(dx**2 + dy**2)
         
-        self.s_values = distances
-        self.path_length = distances[-1]
+        self.u_values = distances  # Chord-length parameters
+        # Note: path_length will be computed as actual arc length using RK4 after spline creation
     
     def _create_spline(self):
         """Create the cubic spline using the modular CubicSpline class."""
         if self.closed_path:
             # For closed paths, use natural boundary conditions instead of periodic
             # to avoid issues with parameter ordering
-            self.spline = CubicSpline(self.s_values, self.waypoints, bc_type='natural')
+            self.spline = CubicSpline(self.u_values, self.waypoints, bc_type='natural')
         else:
-            self.spline = CubicSpline(self.s_values, self.waypoints, bc_type='natural')
+            self.spline = CubicSpline(self.u_values, self.waypoints, bc_type='natural')
+        
+        # Compute actual arc length using the spline's built-in RK4 integration
+        self.path_length = self.spline.arc_length()
     
-    def evaluate(self, s: Union[float, np.ndarray]) -> np.ndarray:
+    def evaluate(self, u: Union[float, np.ndarray]) -> np.ndarray:
         """
-        Evaluate the spline at given parameter values.
+        Evaluate the spline at given chord-length parameter values.
         
         Args:
-            s: Parameter value(s) along the spline (0 to path_length)
+            u: Chord-length parameter value(s) along the spline (0 to path_length)
             
         Returns:
             Array of [x, y] coordinates
         """
-        return self.spline.evaluate(s)
+        return self.spline.evaluate(u)
     
-    def evaluate_derivatives(self, s: Union[float, np.ndarray], order: int = 1) -> np.ndarray:
+    def evaluate_derivatives(self, u: Union[float, np.ndarray], order: int = 1) -> np.ndarray:
         """
         Evaluate derivatives of the spline.
         
         Args:
-            s: Parameter value(s) along the spline
+            u: Chord-length parameter value(s) along the spline
             order: Derivative order (1 for velocity, 2 for acceleration)
             
         Returns:
-            Array of derivative values [dx/ds, dy/ds] or [d²x/ds², d²y/ds²]
+            Array of derivative values [dx/du, dy/du] or [d²x/du², d²y/du²]
         """
-        return self.spline.derivative(s, order=order)
+        return self.spline.derivative(u, order=order)
     
-    def compute_curvature(self, s: Union[float, np.ndarray]) -> np.ndarray:
+    def compute_curvature(self, u: Union[float, np.ndarray]) -> np.ndarray:
         """
-        Compute curvature at given parameter values.
+        Compute curvature at given chord-length parameter values.
         
         Args:
-            s: Parameter value(s) along the spline
+            u: Chord-length parameter value(s) along the spline
             
         Returns:
             Curvature values
         """
-        return self.spline.curvature(s)
+        return self.spline.curvature(u)
     
     def generate_trajectory(self, num_points: int = 100) -> dict:
         """
@@ -109,25 +115,25 @@ class ChordLengthParametricSpline2D:
         Returns:
             Dictionary containing trajectory data:
             - 'positions': [x, y] coordinates
-            - 'velocities': [dx/ds, dy/ds] derivatives
-            - 'accelerations': [d²x/ds², d²y/ds²] second derivatives
+            - 'velocities': [dx/du, dy/du] derivatives
+            - 'accelerations': [d²x/du², d²y/du²] second derivatives
             - 'curvatures': curvature values
-            - 's_values': parameter values
-            - 'path_length': total path length
+            - 'u_values': chord-length parameter values
+            - 'path_length': total path length (chord length)
         """
-        s_trajectory = np.linspace(0, self.path_length, num_points)
+        u_trajectory = np.linspace(0, self.path_length, num_points)
         
-        positions = self.evaluate(s_trajectory)
-        velocities = self.evaluate_derivatives(s_trajectory, order=1)
-        accelerations = self.evaluate_derivatives(s_trajectory, order=2)
-        curvatures = self.compute_curvature(s_trajectory)
+        positions = self.evaluate(u_trajectory)
+        velocities = self.evaluate_derivatives(u_trajectory, order=1)
+        accelerations = self.evaluate_derivatives(u_trajectory, order=2)
+        curvatures = self.compute_curvature(u_trajectory)
         
         return {
             'positions': positions,
             'velocities': velocities,
             'accelerations': accelerations,
             'curvatures': curvatures,
-            's_values': s_trajectory,
+            'u_values': u_trajectory,
             'path_length': self.path_length
         }
     
@@ -140,40 +146,40 @@ class ChordLengthParametricSpline2D:
             num_samples: Number of initial samples for coarse search (ignored, uses waypoints instead)
             
         Returns:
-            Tuple of (parameter_value, closest_point)
+            Tuple of (chord_length_parameter, closest_point)
         """
         # Use waypoints for coarse search instead of dense sampling
         # This is much more efficient and leverages the fact that curvature
         # varies monotonically across spline segments
         waypoint_distances = np.linalg.norm(self.waypoints - query_point, axis=1)
         min_waypoint_idx = np.argmin(waypoint_distances)
-        s_initial = self.s_values[min_waypoint_idx]
+        u_initial = self.u_values[min_waypoint_idx]
         
         # Newton's method to refine the closest point
-        # We want to minimize ||P(s) - query_point||^2
-        # The derivative is: 2 * (P(s) - query_point) · P'(s) = 0
-        # Newton's method: s_new = s - f(s)/f'(s)
-        # where f(s) = (P(s) - query_point) · P'(s)
-        # and f'(s) = P'(s) · P'(s) + (P(s) - query_point) · P''(s)
+        # We want to minimize ||P(u) - query_point||^2
+        # The derivative is: 2 * (P(u) - query_point) · P'(u) = 0
+        # Newton's method: u_new = u - f(u)/f'(u)
+        # where f(u) = (P(u) - query_point) · P'(u)
+        # and f'(u) = P'(u) · P'(u) + (P(u) - query_point) · P''(u)
         
-        s = s_initial
+        u = u_initial
         max_iterations = 20
         tolerance = 1e-8
         
         for i in range(max_iterations):
-            # Evaluate spline and derivatives at current s
-            point = self.evaluate(np.array([s]))[0]  # P(s)
-            first_deriv = self.evaluate_derivatives(np.array([s]), order=1)[0]  # P'(s)
-            second_deriv = self.evaluate_derivatives(np.array([s]), order=2)[0]  # P''(s)
+            # Evaluate spline and derivatives at current u
+            point = self.evaluate(np.array([u]))[0]  # P(u)
+            first_deriv = self.evaluate_derivatives(np.array([u]), order=1)[0]  # P'(u)
+            second_deriv = self.evaluate_derivatives(np.array([u]), order=2)[0]  # P''(u)
             
             # Vector from spline point to query point
-            diff = point - query_point  # P(s) - query_point
+            diff = point - query_point  # P(u) - query_point
             
-            # First derivative of objective function: f(s) = diff · P'(s)
+            # First derivative of objective function: f(u) = diff · P'(u)
             # For 2D vectors, this is diff[0]*first_deriv[0] + diff[1]*first_deriv[1]
             f = np.sum(diff * first_deriv)
             
-            # Second derivative of objective function: f'(s) = P'(s) · P'(s) + diff · P''(s)
+            # Second derivative of objective function: f'(u) = P'(u) · P'(u) + diff · P''(u)
             f_prime = np.sum(first_deriv * first_deriv) + np.sum(diff * second_deriv)
             
             # Check for convergence
@@ -185,26 +191,20 @@ class ChordLengthParametricSpline2D:
                 break
                 
             # Newton's method update
-            s_new = s - f / f_prime
+            u_new = u - f / f_prime
             
             # Clamp to valid range
-            s_new = np.clip(s_new, 0, self.path_length)
+            u_new = np.clip(u_new, 0, self.path_length)
             
             # Check for convergence in parameter space
-            if abs(s_new - s) < tolerance:
+            if abs(u_new - u) < tolerance:
                 break
                 
-            s = s_new
+            u = u_new
         
         # Return final result
-        closest_point = self.evaluate(np.array([s]))[0]
-        
-        # Debug: verify the result
-        if hasattr(closest_point, 'shape') and closest_point.shape != (2,):
-            print(f"Warning: closest_point has unexpected shape {closest_point.shape}")
-            print(f"closest_point value: {closest_point}")
-        
-        return s, closest_point
+        closest_point = self.evaluate(np.array([u]))[0]
+        return u, closest_point
     
     def find_closest_point(self, query_point: np.ndarray) -> np.ndarray:
         """
@@ -220,27 +220,27 @@ class ChordLengthParametricSpline2D:
         return closest_point
     
     def get_path_length(self) -> float:
-        """Get the total path length."""
+        """Get total path length (actual arc length computed via RK4 integration)."""
         return self.path_length
     
     def get_waypoints(self) -> np.ndarray:
-        """Get the original waypoints."""
+        """Get original waypoints."""
         return self.waypoints.copy()
     
     def get_parameter_values(self) -> np.ndarray:
-        """Get the parameter values for waypoints."""
-        return self.s_values.copy()
+        """Get chord-length parameter values."""
+        return self.u_values.copy()
     
     def plot_spline(self, num_points: int = 200, show_waypoints: bool = True, 
                    show_curvature: bool = False, figsize: tuple = (12, 5)):
         """
-        Plot the fitted spline.
+        Plot the spline with optional waypoints and curvature.
         
         Args:
             num_points: Number of points for smooth curve visualization
             show_waypoints: Whether to show original waypoints
             show_curvature: Whether to show curvature plot
-            figsize: Figure size for the plot
+            figsize: Figure size tuple
         """
         trajectory = self.generate_trajectory(num_points)
         
@@ -249,62 +249,87 @@ class ChordLengthParametricSpline2D:
         else:
             fig, ax1 = plt.subplots(1, 1, figsize=(figsize[0]//2, figsize[1]))
         
-        # Plot trajectory
-        ax1.plot(trajectory['positions'][:, 0], trajectory['positions'][:, 1], 
-                'b-', linewidth=2, label='Spline')
+        # Plot spline curve
+        positions = trajectory['positions']
+        ax1.plot(positions[:, 0], positions[:, 1], 'b-', linewidth=2, label='Spline')
         
         if show_waypoints:
-            ax1.plot(self.waypoints[:, 0], self.waypoints[:, 1], 
-                    'ro', markersize=8, label='Waypoints')
+            ax1.plot(self.waypoints[:, 0], self.waypoints[:, 1], 'ro', 
+                    markersize=8, label='Waypoints')
             
-            # Number the waypoints
+            # Add waypoint numbers
             for i, (x, y) in enumerate(self.waypoints):
                 ax1.annotate(f'{i}', (x, y), xytext=(5, 5), 
                            textcoords='offset points', fontsize=10)
         
-        ax1.set_xlabel('X [m]')
-        ax1.set_ylabel('Y [m]')
-        ax1.set_title('Cubic Spline Trajectory')
+        ax1.set_xlabel('X')
+        ax1.set_ylabel('Y')
+        ax1.set_title('2D Spline Path')
         ax1.legend()
         ax1.grid(True, alpha=0.3)
         ax1.axis('equal')
         
-        # Plot curvature
         if show_curvature:
-            ax2.plot(trajectory['s_values'], trajectory['curvatures'], 'g-', linewidth=2)
-            ax2.set_xlabel('Path Parameter s [m]')
-            ax2.set_ylabel('Curvature [1/m]')
-            ax2.set_title('Curvature along Path')
+            # Plot curvature
+            curvatures = trajectory['curvatures']
+            ax2.plot(trajectory['u_values'], curvatures, 'g-', linewidth=2)
+            ax2.set_xlabel('Chord-length Parameter u')
+            ax2.set_ylabel('Curvature')
+            ax2.set_title('Path Curvature')
             ax2.grid(True, alpha=0.3)
         
         plt.tight_layout()
         plt.show()
     
-    def resample_trajectory(self, ds: float) -> dict:
+    def resample_trajectory(self, du: float) -> dict:
         """
-        Resample trajectory with constant arc length spacing.
+        Resample trajectory with uniform chord-length parameter spacing.
         
         Args:
-            ds: Arc length spacing between points
+            du: Chord-length parameter step size
             
         Returns:
-            Dictionary containing resampled trajectory data
+            Dictionary containing resampled trajectory
         """
-        num_points = int(np.ceil(self.path_length / ds)) + 1
-        return self.generate_trajectory(num_points)
+        u_resampled = np.arange(0, self.path_length + du, du)
+        return self.generate_trajectory_at_parameters(u_resampled)
     
-    def get_tangent_angle(self, s: Union[float, np.ndarray]) -> np.ndarray:
+    def get_tangent_angle(self, u: Union[float, np.ndarray]) -> np.ndarray:
         """
-        Get tangent angle at given parameter values.
+        Get tangent angle at given chord-length parameter values.
         
         Args:
-            s: Parameter value(s) along the spline
+            u: Chord-length parameter value(s)
             
         Returns:
             Tangent angles in radians
         """
-        derivatives = self.evaluate_derivatives(s, order=1)
+        derivatives = self.evaluate_derivatives(u, order=1)
         if derivatives.ndim == 1:
             return np.arctan2(derivatives[1], derivatives[0])
         else:
-            return np.arctan2(derivatives[:, 1], derivatives[:, 0]) 
+            return np.arctan2(derivatives[:, 1], derivatives[:, 0])
+    
+    def generate_trajectory_at_parameters(self, u_values: np.ndarray) -> dict:
+        """
+        Generate trajectory at specific chord-length parameter values.
+        
+        Args:
+            u_values: Array of chord-length parameter values
+            
+        Returns:
+            Dictionary containing trajectory data
+        """
+        positions = self.evaluate(u_values)
+        velocities = self.evaluate_derivatives(u_values, order=1)
+        accelerations = self.evaluate_derivatives(u_values, order=2)
+        curvatures = self.compute_curvature(u_values)
+        
+        return {
+            'positions': positions,
+            'velocities': velocities,
+            'accelerations': accelerations,
+            'curvatures': curvatures,
+            'u_values': u_values,
+            'path_length': self.path_length
+        } 

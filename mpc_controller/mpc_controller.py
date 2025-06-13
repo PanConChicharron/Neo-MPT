@@ -3,21 +3,20 @@ import casadi as ca
 from acados_template import AcadosOcp, AcadosOcpSolver
 from typing import Dict, Optional, Tuple
 from .vehicle_model import VehicleModel
-from .curvilinear_dynamics import CurvilinearDynamics
+from .spline_path_dynamics import SplinePathDynamics
 
 
 class MPCController:
     """
-    Model Predictive Controller for path tracking using acados.
+    Model Predictive Controller for spline path tracking using acados.
     
-    This controller can use either Cartesian or curvilinear coordinates
-    for optimal path following performance.
+    This controller uses spline path dynamics for optimal path following performance,
+    with costs on heading error, cross-track error, and progress towards goal.
     """
     
     def __init__(self, vehicle_model: VehicleModel, 
                  prediction_horizon: float = 2.0, 
-                 dt: float = 0.1,
-                 use_curvilinear: bool = True):
+                 dt: float = 0.1):
         """
         Initialize MPC controller.
         
@@ -25,27 +24,53 @@ class MPCController:
             vehicle_model: Vehicle dynamics model
             prediction_horizon: Prediction horizon in seconds
             dt: Time step for discretization
-            use_curvilinear: Whether to use curvilinear coordinates
         """
         self.vehicle_model = vehicle_model
         self.prediction_horizon = prediction_horizon
         self.dt = dt
-        self.use_curvilinear = use_curvilinear
         self.N = int(prediction_horizon / dt)  # Number of prediction steps
         
-        # Initialize curvilinear dynamics if needed
-        if self.use_curvilinear:
-            self.curvilinear_dynamics = CurvilinearDynamics(vehicle_model)
-        else:
-            self.curvilinear_dynamics = None
+        # Initialize spline path dynamics
+        self.spline_dynamics = None  # Will be set when path is provided
         
-        # Cost function weights
-        self.Q = np.diag([10.0, 100.0, 10.0, 1.0])  # State weights
-        self.R = np.diag([1.0, 0.1])                # Input weights
-        self.Q_terminal = 2 * self.Q                # Terminal state weights
+        # Cost function weights for spline path tracking
+        # State weights: [s, u, e_y, e_ψ, v]
+        self.Q = np.diag([
+            1.0,    # s (progress) - small weight since we use terminal cost
+            0.0,    # u (spline parameter) - not directly penalized
+            100.0,  # e_y (cross-track error) - heavily penalized
+            10.0,   # e_ψ (heading error) - moderate weight
+            1.0     # v (velocity) - small weight
+        ])
+        
+        # Input weights: [delta, a]
+        self.R = np.diag([
+            1.0,    # steering
+            0.1     # acceleration
+        ])
+        
+        # Terminal state weights (heavier than stage costs)
+        self.Q_terminal = np.diag([
+            10.0,   # s (progress) - higher weight to reach goal
+            0.0,    # u (spline parameter)
+            200.0,  # e_y (cross-track error) - very heavy terminal penalty
+            20.0,   # e_ψ (heading error) - heavier terminal penalty
+            2.0     # v (velocity)
+        ])
         
         # Initialize solver
         self.solver = None
+        self.total_path_length = None
+    
+    def set_path(self, spline_dynamics: SplinePathDynamics):
+        """
+        Set the spline path for tracking.
+        
+        Args:
+            spline_dynamics: SplinePathDynamics object containing the path
+        """
+        self.spline_dynamics = spline_dynamics
+        self.total_path_length = spline_dynamics.spline_coords.path_length
         self._setup_ocp()
     
     def _handle_constraints(self, constraints: Dict) -> Dict:
@@ -75,150 +100,102 @@ class MPCController:
     
     def _setup_ocp(self):
         """Setup the optimal control problem using acados."""
+        if self.spline_dynamics is None:
+            raise RuntimeError("Spline path must be set before setting up OCP")
+            
         ocp = AcadosOcp()
         
-        # Model setup
-        if self.use_curvilinear:
-            self._setup_curvilinear_model(ocp)
-        else:
-            self._setup_cartesian_model(ocp)
+        # Get symbolic variables from spline dynamics
+        x = self.spline_dynamics.state  # [s, u, e_y, e_ψ, v]
+        u = self.spline_dynamics.input   # [delta, a]
         
-        # Solver options
-        ocp.solver_options.qp_solver = 'PARTIAL_CONDENSING_HPIPM'
-        ocp.solver_options.hessian_approx = 'GAUSS_NEWTON'
-        ocp.solver_options.integrator_type = 'ERK'
-        ocp.solver_options.nlp_solver_type = 'SQP_RTI'
-        ocp.solver_options.nlp_solver_max_iter = 50  # Reduced from 100
-        ocp.solver_options.qp_solver_iter_max = 50   # Add QP iteration limit
-        ocp.solver_options.print_level = 0          # Reduced from 1 for cleaner output
-        ocp.solver_options.nlp_solver_tol_stat = 1e-4  # Relaxed tolerance
-        ocp.solver_options.nlp_solver_tol_eq = 1e-4    # Relaxed tolerance
-        ocp.solver_options.nlp_solver_tol_ineq = 1e-4  # Relaxed tolerance
-        
-        # Create solver
-        self.solver = AcadosOcpSolver(ocp, json_file='acados_ocp.json')
-    
-    def _setup_curvilinear_model(self, ocp):
-        """Setup OCP with curvilinear coordinates."""
-        # State: [s, d, theta_e, v]
-        # Input: [delta, a]
-        
-        # Use the curvilinear dynamics symbolic variables
-        x = self.curvilinear_dynamics.state
-        u = self.curvilinear_dynamics.input
-        kappa = self.curvilinear_dynamics.kappa
-        
-        # Get discrete curvilinear dynamics
-        discrete_dynamics = self.curvilinear_dynamics.get_discrete_dynamics(self.dt)
-        x_next = discrete_dynamics(x, u, kappa)
-        
-        # Set model - use explicit discrete dynamics
-        ocp.model.f_expl_expr = x_next
-        ocp.model.x = x
-        ocp.model.u = u
-        ocp.model.p = ca.vertcat(kappa)
-        ocp.model.name = 'curvilinear_vehicle'
-        
-        # Dimensions MUST be set first
-        ocp.solver_options.N_horizon = self.N
-        ocp.dims.ny = 4    # output dimension (states only)
-        ocp.dims.ny_e = 4  # terminal output dimension
-        
-        # Set parameter dimensions
-        ocp.dims.np = 1  # One parameter: curvature
-        
-        # Initialize parameter values
-        ocp.parameter_values = np.zeros(1)  # Initialize curvature to zero
-        
-        # Cost function
-        ocp.cost.cost_type = 'LINEAR_LS'
-        ocp.cost.cost_type_e = 'LINEAR_LS'
-        
-        # Output selection matrices
-        ocp.cost.Vx = np.eye(4)  # Select all 4 states
-        ocp.cost.Vu = np.zeros((4, 2))  # No input in output
-        
-        # Cost weights
-        ocp.cost.W = self.Q      # 4x4 matrix for 4 outputs
-        
-        # Terminal cost
-        ocp.cost.Vx_e = np.eye(4)
-        ocp.cost.W_e = self.Q_terminal
-        
-        # Constraints
-        constraints = self._handle_constraints(self.curvilinear_dynamics.get_constraints())
-        
-        ocp.constraints.lbu = np.array([constraints['steering_min'], 
-                                       constraints['acceleration_min']])
-        ocp.constraints.ubu = np.array([constraints['steering_max'], 
-                                       constraints['acceleration_max']])
-        ocp.constraints.idxbu = np.array([0, 1])
-        
-        # State constraints for curvilinear coordinates
-        # [s, d, theta_e, v] - constrain lateral deviation, heading error, and velocity
-        ocp.constraints.lbx = np.array([-5.0, -np.pi, constraints['velocity_min']])  # [d, theta_e, v]
-        ocp.constraints.ubx = np.array([5.0, np.pi, constraints['velocity_max']])
-        ocp.constraints.idxbx = np.array([1, 2, 3])  # constrain d, theta_e, v (not s)
-        
-        # Initial condition constraint
-        ocp.constraints.x0 = np.zeros(4)
-        
-        # Initialize reference values to avoid dimension errors
-        ocp.cost.yref = np.zeros(4)    # 4-dimensional reference
-        ocp.cost.yref_e = np.zeros(4)  # 4-dimensional terminal reference
-        
-        # Solver settings
-        ocp.solver_options.tf = self.prediction_horizon
-    
-    def _setup_cartesian_model(self, ocp):
-        """Setup OCP with Cartesian coordinates."""
-        # State: [x, y, theta, v]
-        # Input: [delta, a]
-        
-        x_pos = ca.SX.sym('x')
-        y_pos = ca.SX.sym('y')
-        theta = ca.SX.sym('theta')
-        v = ca.SX.sym('v')
-        
-        x = ca.vertcat(x_pos, y_pos, theta, v)
-        
-        delta = ca.SX.sym('delta')
-        a = ca.SX.sym('a')
-        u = ca.vertcat(delta, a)
+        # Get spline parameters
+        knots = self.spline_dynamics.knots_ca
+        coeffs_x = self.spline_dynamics.coeffs_x_ca
+        coeffs_y = self.spline_dynamics.coeffs_y_ca
         
         # Get discrete dynamics
-        discrete_dynamics = self.vehicle_model.get_discrete_dynamics(self.dt)
-        x_next = discrete_dynamics(x, u)
+        discrete_dynamics = self.spline_dynamics.get_discrete_dynamics(self.dt)
         
         # Set model
-        ocp.model.f_expl_expr = x_next
+        ocp.model.f_expl_expr = discrete_dynamics(x, u, ocp.model.p)  # Pass parameters as single vector
         ocp.model.x = x
         ocp.model.u = u
-        ocp.model.name = 'cartesian_vehicle'
+        ocp.model.name = 'spline_path_vehicle'
         
-        # Dimensions MUST be set first
+        # Set parameters - ensure consistent dimension
+        param_dim = (self.spline_dynamics.knots.shape[0] + 
+                    self.spline_dynamics.coeffs_x.shape[0] * self.spline_dynamics.coeffs_x.shape[1] + 
+                    self.spline_dynamics.coeffs_y.shape[0] * self.spline_dynamics.coeffs_y.shape[1])
+        
+        print("\nDEBUG: Initial OCP parameter setup:")
+        print(f"Knots shape: {self.spline_dynamics.knots.shape}")
+        print(f"Coeffs_x shape: {self.spline_dynamics.coeffs_x.shape}")
+        print(f"Coeffs_y shape: {self.spline_dynamics.coeffs_y.shape}")
+        print(f"Total parameter dimension: {param_dim}")
+        
+        ocp.model.p = ca.SX.sym('p', param_dim)
+        
+        # Initialize parameter values
+        param_values = np.concatenate([
+            self.spline_dynamics.knots_np,
+            self.spline_dynamics.coeffs_x_np.flatten(),
+            self.spline_dynamics.coeffs_y_np.flatten()
+        ])
+        ocp.parameter_values = param_values
+        
+        # Dimensions
         ocp.solver_options.N_horizon = self.N
-        ocp.dims.ny = 4    # output dimension (states only)
-        ocp.dims.ny_e = 4  # terminal output dimension
+        ocp.dims.ny = 5    # output dimension (all states)
+        ocp.dims.ny_e = 5  # terminal output dimension
+        ocp.dims.np = param_dim  # parameter dimension
         
-        # Cost function
+        # Cost function setup
         ocp.cost.cost_type = 'LINEAR_LS'
         ocp.cost.cost_type_e = 'LINEAR_LS'
         
-        # Output selection matrices - this is what was missing!
-        ocp.cost.Vx = np.eye(4)  # Select all 4 states
-        ocp.cost.Vu = np.zeros((4, 2))  # No input in output (4 outputs, 2 inputs)
+        # Cost matrices
+        ny = 7  # Number of outputs (5 states + 2 inputs)
+        ny_e = 5  # Number of terminal outputs (just states)
+        
+        # Output matrices
+        Vx = np.zeros((ny, 5))  # State output matrix
+        Vu = np.zeros((ny, 2))  # Input output matrix
+        Vx_e = np.zeros((ny_e, 5))  # Terminal state output matrix
+        
+        # State terms
+        Vx[0:5, 0:5] = np.eye(5)  # All states
+        # Input terms
+        Vu[5:7, 0:2] = np.eye(2)  # All inputs
+        
+        # Terminal cost only includes states
+        Vx_e[0:5, 0:5] = np.eye(5)
         
         # Cost weights
-        ocp.cost.W = self.Q      # 4x4 matrix for 4 outputs
+        W = np.zeros((ny, ny))
+        W[0:5, 0:5] = np.diag([1.0, 1.0, 10.0, 10.0, 1.0])  # State weights
+        W[5:7, 5:7] = np.diag([1.0, 1.0])  # Input weights
         
-        # Terminal cost
-        ocp.cost.Vx_e = np.eye(4)
-        ocp.cost.W_e = self.Q_terminal
+        W_e = np.diag([1.0, 1.0, 10.0, 10.0, 1.0])  # Terminal weights
+        
+        # Set cost matrices
+        ocp.cost.Vx = Vx
+        ocp.cost.Vu = Vu
+        ocp.cost.Vx_e = Vx_e
+        ocp.cost.W = W
+        ocp.cost.W_e = W_e
         
         # Constraints
-        constraints = self._handle_constraints(self.vehicle_model.get_constraints())
+        constraints = self._handle_constraints(self.spline_dynamics.get_constraints())
         
+        print("\nDEBUG: Constraint setup:")
+        print("Vehicle constraints:")
+        print(f"  Steering: [{constraints['steering_min']}, {constraints['steering_max']}]")
+        print(f"  Acceleration: [{constraints['acceleration_min']}, {constraints['acceleration_max']}]")
+        print(f"  Velocity: [{constraints['velocity_min']}, {constraints['velocity_max']}]")
+        print(f"  Spline parameter u: [{constraints['u_min']}, {constraints['u_max']}]")
+        
+        # Input constraints
         ocp.constraints.lbu = np.array([constraints['steering_min'], 
                                        constraints['acceleration_min']])
         ocp.constraints.ubu = np.array([constraints['steering_max'], 
@@ -226,29 +203,71 @@ class MPCController:
         ocp.constraints.idxbu = np.array([0, 1])
         
         # State constraints
-        ocp.constraints.lbx = np.array([constraints['velocity_min']])  # minimum velocity
-        ocp.constraints.ubx = np.array([constraints['velocity_max']])  # maximum velocity
-        ocp.constraints.idxbx = np.array([3])  # constrain velocity only
+        # Constrain all states: [s, u, e_y, e_ψ, v]
+        total_chord_length = self.spline_dynamics.spline_coords.total_chord_length
+        ocp.constraints.lbx = np.array([
+            constraints['u_min'],     # s: bounded by path length
+            0.0,                      # u: bounded by total chord length
+            -10.0,                    # e_y: relaxed lateral error bounds
+            -np.pi,                   # e_ψ: heading error bounds
+            constraints['velocity_min']  # v: velocity bounds
+        ])
+        ocp.constraints.ubx = np.array([
+            constraints['u_max'],     # s: bounded by path length
+            total_chord_length,       # u: bounded by total chord length
+            10.0,                     # e_y: relaxed lateral error bounds
+            np.pi,                    # e_ψ: heading error bounds
+            constraints['velocity_max']  # v: velocity bounds
+        ])
+        ocp.constraints.idxbx = np.array([0, 1, 2, 3, 4])  # indices of all states
         
-        # Initial condition constraint
-        ocp.constraints.x0 = np.zeros(4)
+        print("\nDEBUG: State constraint indices:")
+        print(f"Constrained state indices: {ocp.constraints.idxbx}")
+        print(f"State bounds:")
+        print(f"  s: [{ocp.constraints.lbx[0]}, {ocp.constraints.ubx[0]}]")
+        print(f"  u: [{ocp.constraints.lbx[1]}, {ocp.constraints.ubx[1]}]")
+        print(f"  e_y: [{ocp.constraints.lbx[2]}, {ocp.constraints.ubx[2]}]")
+        print(f"  e_ψ: [{ocp.constraints.lbx[3]}, {ocp.constraints.ubx[3]}]")
+        print(f"  v: [{ocp.constraints.lbx[4]}, {ocp.constraints.ubx[4]}]")
         
-        # Initialize reference values to avoid dimension errors
-        ocp.cost.yref = np.zeros(4)    # 4-dimensional reference
-        ocp.cost.yref_e = np.zeros(4)  # 4-dimensional terminal reference
+        # Initial condition constraint - will be set in solve()
+        ocp.constraints.x0 = np.zeros(5)  # Placeholder, will be updated
         
+        # Initialize reference values
+        ocp.cost.yref = np.zeros(7)
+        ocp.cost.yref_e = np.zeros(5)  # 5-dimensional terminal reference
+        
+        # Solver settings
         ocp.solver_options.tf = self.prediction_horizon
+        ocp.solver_options.qp_solver = 'PARTIAL_CONDENSING_HPIPM'
+        ocp.solver_options.hessian_approx = 'GAUSS_NEWTON'
+        ocp.solver_options.integrator_type = 'ERK'
+        ocp.solver_options.nlp_solver_type = 'SQP_RTI'
+        ocp.solver_options.nlp_solver_max_iter = 50
+        ocp.solver_options.qp_solver_iter_max = 50
+        ocp.solver_options.print_level = 0
+        
+        print("\nDEBUG: Solver settings:")
+        print(f"Prediction horizon: {self.prediction_horizon}")
+        print(f"Time step: {self.dt}")
+        print(f"Number of steps: {self.N}")
+        print(f"QP solver: {ocp.solver_options.qp_solver}")
+        print(f"NLP solver: {ocp.solver_options.nlp_solver_type}")
+        
+        # Create solver
+        self.solver = AcadosOcpSolver(ocp, json_file='acados_ocp.json')
+        
+        # Set initial parameter values
+        self.spline_dynamics.update_spline_parameters(self.solver)
     
     def solve(self, current_state: np.ndarray, 
-              reference_trajectory: Dict,
-              current_curvature: Optional[np.ndarray] = None) -> Dict:
+              reference_trajectory: Dict) -> Dict:
         """
         Solve MPC optimization problem.
         
         Args:
-            current_state: Current vehicle state
+            current_state: Current vehicle state [s, u, e_y, e_ψ, v]
             reference_trajectory: Reference trajectory data
-            current_curvature: Path curvature values (for curvilinear mode)
             
         Returns:
             Dictionary containing optimal control sequence and predicted trajectory
@@ -256,18 +275,96 @@ class MPCController:
         if self.solver is None:
             raise RuntimeError("MPC solver not initialized")
         
-        # Set initial condition
-        self.solver.set(0, "lbx", current_state)
-        self.solver.set(0, "ubx", current_state)
+        # Debug prints for initial state and constraints
+        print("\nDEBUG: Initial state:")
+        print(f"Current state: {current_state}")
+        print(f"State bounds:")
+        print(f"  s: [0, {self.total_path_length}]")
+        print(f"  u: [{self.spline_dynamics.spline_coords.u_values[0]}, {self.spline_dynamics.spline_coords.u_values[-1]}]")
+        print(f"  e_y: [{self.solver.acados_ocp.constraints.lbx[2]}, {self.solver.acados_ocp.constraints.ubx[2]}]")
+        print(f"  e_ψ: [{self.solver.acados_ocp.constraints.lbx[3]}, {self.solver.acados_ocp.constraints.ubx[3]}]")
+        print(f"  v: [{self.solver.acados_ocp.constraints.lbx[4]}, {self.solver.acados_ocp.constraints.ubx[4]}]")
+        
+        print("\nDEBUG: Input constraints:")
+        print(f"  delta: [{self.solver.acados_ocp.constraints.lbu[0]}, {self.solver.acados_ocp.constraints.ubu[0]}]")
+        print(f"  a: [{self.solver.acados_ocp.constraints.lbu[1]}, {self.solver.acados_ocp.constraints.ubu[1]}]")
+        
+        # Print actual constraint arrays and initial state before solve
+        print("\n=== DEBUG: Constraints before solve ===")
+        print("lbx:", self.solver.acados_ocp.constraints.lbx)
+        print("ubx:", self.solver.acados_ocp.constraints.ubx)
+        print("lbu:", self.solver.acados_ocp.constraints.lbu)
+        print("ubu:", self.solver.acados_ocp.constraints.ubu)
+        print("Initial state:", current_state)
+
+        # Set initial guess for optimization variables
+        for i in range(self.N + 1):
+            self.solver.set(i, "x", current_state)
+        for i in range(self.N):
+            self.solver.set(i, "u", np.zeros(2))
         
         # Set reference trajectory
-        self._set_reference(reference_trajectory, current_curvature)
+        self._set_reference(reference_trajectory)
+        
+        # Debug print reference trajectory
+        print("\nDEBUG: Reference trajectory:")
+        print(f"Final desired progress: {reference_trajectory.get('u_values', reference_trajectory.get('s_values', []))[-1] if reference_trajectory.get('u_values', reference_trajectory.get('s_values', [])) else 'N/A'}")
+        print(f"Reference velocities: {reference_trajectory.get('velocities', [10.0] * len(reference_trajectory.get('u_values', reference_trajectory.get('s_values', []))))}")
+        
+        # Extract reference trajectory data
+        # Handle both old 's_values' and new 'u_values' naming for backward compatibility
+        trajectory_params = reference_trajectory.get('u_values', reference_trajectory.get('s_values', []))
+        velocities = reference_trajectory.get('velocities', [10.0] * len(trajectory_params))
+        
+        # Set reference for each node in the horizon
+        for i in range(self.N + 1):
+            if i < len(trajectory_params):
+                # Set reference state: [s, u, e_y, e_ψ, v]
+                self.solver.set(i, "yref", [
+                    trajectory_params[i],  # s (arc-length progress)
+                    trajectory_params[i],  # u (chord-length parameter) - approximation
+                    0.0,                   # e_y (lateral error)
+                    0.0,                   # e_ψ (heading error)
+                    velocities[i] if i < len(velocities) else 10.0  # v (velocity)
+                ])
+            else:
+                # Use final values for remaining nodes
+                self.solver.set(i, "yref", [
+                    trajectory_params[-1] if trajectory_params else 0.0,
+                    trajectory_params[-1] if trajectory_params else 0.0,
+                    0.0,
+                    0.0,
+                    velocities[-1] if velocities else 10.0
+                ])
+        
+        # Set terminal reference
+        if trajectory_params:
+            self.solver.set(self.N, "yref_e", [
+                trajectory_params[-1],
+                trajectory_params[-1],
+                0.0,
+                0.0,
+                velocities[-1] if velocities else 10.0
+            ])
+        
+        # Print initial guess for optimization variables
+        print("\nDEBUG: Initial guess for optimization variables:")
+        for i in range(self.N):
+            x_guess = self.solver.get(i, "x")
+            u_guess = self.solver.get(i, "u")
+            print(f"Step {i}:")
+            print(f"  x_guess: {x_guess}")
+            print(f"  u_guess: {u_guess}")
         
         # Solve optimization problem
         status = self.solver.solve()
         
         if status != 0:
-            print(f"MPC solver failed with status {status}")
+            print(f"\nMPC solver failed with status {status}")
+            print("Cost function weights:")
+            print(f"Q (state weights):\n{self.Q}")
+            print(f"R (input weights):\n{self.R}")
+            print(f"Q_terminal (terminal weights):\n{self.Q_terminal}")
         
         # Extract solution
         optimal_inputs = []
@@ -292,83 +389,29 @@ class MPCController:
             'cost': self.solver.get_cost()
         }
     
-    def _set_reference(self, reference_trajectory: Dict, 
-                      current_curvature: Optional[np.ndarray] = None):
+    def _set_reference(self, reference_trajectory: Dict):
         """Set reference trajectory for the optimization problem."""
+        # This method is now handled inline in the solve method
+        pass
+    
+    def update_waypoints(self, waypoints: np.ndarray):
+        """Update waypoints and recompute spline parameters."""
+        if self.spline_dynamics is None:
+            raise RuntimeError("Spline path must be set before updating waypoints")
         
-        if self.use_curvilinear and current_curvature is not None:
-            # Set curvature parameters
-            for i in range(self.N):
-                kappa_i = current_curvature[min(i, len(current_curvature)-1)]
-                self.solver.set(i, "p", np.array([kappa_i]))
+        # Update spline parameters
+        self.spline_dynamics.update_waypoints(waypoints)
         
-        # Get reference data
-        positions = reference_trajectory['positions']
-        headings = reference_trajectory['headings']
-        velocities = reference_trajectory.get('velocities', [10.0] * len(positions))
-        
-        # Set reference for each prediction step
-        for i in range(self.N):
-            if i < len(positions):
-                if self.use_curvilinear:
-                    # Reference in curvilinear coordinates
-                    ref_state = np.array([
-                        reference_trajectory['s_values'][i],
-                        0.0,  # desired lateral deviation = 0
-                        0.0,  # desired heading error = 0
-                        velocities[i]
-                    ])
-                else:
-                    # Reference in Cartesian coordinates
-                    ref_state = np.array([
-                        positions[i, 0],
-                        positions[i, 1],
-                        headings[i],
-                        velocities[i]
-                    ])
-            else:
-                # Use last reference for remaining steps
-                if self.use_curvilinear:
-                    ref_state = np.array([
-                        reference_trajectory['s_values'][-1],
-                        0.0, 0.0,
-                        velocities[-1]
-                    ])
-                else:
-                    ref_state = np.array([
-                        positions[-1, 0],
-                        positions[-1, 1],
-                        headings[-1],
-                        velocities[-1]
-                    ])
-            
-            # Set reference (state only)
-            self.solver.set(i, "yref", ref_state)
-        
-        # Set terminal reference (state only)
-        if self.use_curvilinear:
-            terminal_ref = np.array([
-                reference_trajectory['s_values'][-1],
-                0.0, 0.0,
-                velocities[-1]
-            ])
-        else:
-            terminal_ref = np.array([
-                positions[-1, 0],
-                positions[-1, 1],
-                headings[-1],
-                velocities[-1]
-            ])
-        
-        self.solver.set(self.N, "yref", terminal_ref)
+        # Update parameters in solver
+        self.spline_dynamics.update_spline_parameters(self.solver)
     
     def set_weights(self, Q: np.ndarray, R: np.ndarray, Q_terminal: Optional[np.ndarray] = None):
         """
         Update cost function weights.
         
         Args:
-            Q: State weights
-            R: Input weights  
+            Q: State weights [s, u, e_y, e_ψ, v]
+            R: Input weights [delta, a]
             Q_terminal: Terminal state weights (optional)
         """
         self.Q = Q
@@ -378,8 +421,7 @@ class MPCController:
         else:
             self.Q_terminal = 2 * Q
         
-        # Note: Weights must be set during OCP setup, not after solver creation
-        # If you need to change weights, recreate the solver
+        # Note: Weights must be set during OCP setup
         if self.solver is not None:
             print("Warning: Weights can only be set during solver initialization.")
             print("To change weights, recreate the MPC controller.")
@@ -391,3 +433,13 @@ class MPCController:
     def get_time_step(self) -> float:
         """Get time step."""
         return self.dt 
+
+    def update_spline_parameters(self, solver):
+        """Update spline parameters in the acados solver."""
+        # Get current parameter values
+        current_params = solver.get(0, "p")
+        
+        print("\n=== DEBUG: Parameter vector consistency ===")
+        print("Current param length:", len(current_params))
+        print("New param length:", len(new_params))
+        print("First 10 params:", new_params[:10]) 

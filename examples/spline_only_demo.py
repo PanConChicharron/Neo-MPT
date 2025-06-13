@@ -14,7 +14,9 @@ import os
 # Add parent directory to path to import modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from spline_fit import CubicSpline, ChordLengthParametricSpline2D, CurvilinearCoordinates
+from spline_fit.cubic_spline import CubicSpline
+from spline_fit.chord_length_parametric_spline_2d import ChordLengthParametricSpline2D
+from spline_fit.curvilinear_coordinates import CurvilinearCoordinates
 
 
 def main():
@@ -116,10 +118,10 @@ def main():
     
     # Plot 3: Curvature profile
     ax3 = axes[1, 0]
-    s_values = trajectory['s_values']
+    s_values = trajectory['u_values']
     curvatures = trajectory['curvatures']
     ax3.plot(s_values, curvatures, 'purple', linewidth=2)
-    ax3.set_xlabel('Arc Length s [m]')
+    ax3.set_xlabel('Chord-length Parameter u [m]')
     ax3.set_ylabel('Curvature κ [1/m]')
     ax3.set_title('Curvature Profile')
     ax3.grid(True, alpha=0.3)
