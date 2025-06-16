@@ -306,9 +306,9 @@ def run_simulation(path_type="curved"):
     )
     
     # Set cost weights (must be done before set_path)
-    state_weights = np.array([1.0, 0.1, 1.0, 0.5, 1.0])  # [s, u, e_y, e_ψ, v] - velocity weight = 0.0
+    state_weights = np.array([1.0, 0.0, 5.0, 0.5, 1.0])  # [s, u, e_y, e_ψ, v] - velocity weight = 0.0
     input_weights = np.array([0.1, 0.125])  # [delta, a] - very low acceleration penalty
-    terminal_weights = np.array([2.0, 0.1, 2.0, 1.0, 1.0])  # [s, u, e_y, e_ψ, v] - terminal velocity weight = 0.0
+    terminal_weights = np.array([2.0, 0.0, 10.0, 1.0, 1.0])  # [s, u, e_y, e_ψ, v] - terminal velocity weight = 0.0
     
     mpc.set_weights(state_weights, input_weights, terminal_weights)
     mpc.set_path(spline_dynamics)
