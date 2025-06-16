@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import sys
 import os
+import time
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -347,6 +348,7 @@ def run_simulation(path_type="curved"):
     # Initialize arrays to store results
     states = np.zeros((n_steps + 1, 5))
     inputs = np.zeros((n_steps, 2))
+    solve_times = np.zeros(n_steps)  # Track MPC solve times
     states[0] = initial_state
     
     # Set initial guess for the solver
@@ -457,8 +459,11 @@ def run_simulation(path_type="curved"):
             print(f"  Reference velocity: {target_velocity:.2f} m/s, Current velocity: {states[step][4]:.2f} m/s")
             print(f"  Velocity error: {target_velocity - states[step][4]:.2f} m/s")
         
-        # Solve MPC problem
+        # Solve MPC problem with timing
+        solve_start_time = time.perf_counter()
         result = mpc.solve(states[step], reference_trajectory)
+        solve_end_time = time.perf_counter()
+        solve_times[step] = solve_end_time - solve_start_time
         
         if result['solver_status'] != 0:
             print(f"Warning: MPC solver failed at step {step}")
@@ -491,21 +496,60 @@ def run_simulation(path_type="curved"):
         # Set terminal state guess
         mpc.solver.set(mpc.N, "x", result['predicted_trajectory'][-1])
     
-    # Plot results
-    plot_results(states, inputs, dt, spline_dynamics)
+    # Print timing statistics
+    actual_steps = len([t for t in solve_times if t > 0])  # Count non-zero solve times
+    if actual_steps > 0:
+        valid_solve_times = solve_times[:actual_steps]
+        avg_solve_time = np.mean(valid_solve_times)
+        avg_frequency = 1.0 / avg_solve_time if avg_solve_time > 0 else 0
+        median_frequency = 1.0 / np.median(valid_solve_times) if np.median(valid_solve_times) > 0 else 0
+        max_frequency = 1.0 / np.min(valid_solve_times) if np.min(valid_solve_times) > 0 else 0
+        min_frequency = 1.0 / np.max(valid_solve_times) if np.max(valid_solve_times) > 0 else 0
+        
+        print(f"\n=== MPC SOLVER TIMING STATISTICS ===")
+        print(f"Total simulation steps: {actual_steps}")
+        print(f"Average solve time: {avg_solve_time*1000:.2f} ms")
+        print(f"Median solve time: {np.median(valid_solve_times)*1000:.2f} ms")
+        print(f"Min solve time: {np.min(valid_solve_times)*1000:.2f} ms")
+        print(f"Max solve time: {np.max(valid_solve_times)*1000:.2f} ms")
+        print(f"Std dev solve time: {np.std(valid_solve_times)*1000:.2f} ms")
+        print(f"")
+        print(f"=== MPC SOLVER FREQUENCY STATISTICS ===")
+        print(f"Average frequency: {avg_frequency:.2f} Hz")
+        print(f"Median frequency: {median_frequency:.2f} Hz")
+        print(f"Max frequency: {max_frequency:.2f} Hz")
+        print(f"Min frequency: {min_frequency:.2f} Hz")
+        print(f"Required frequency (1/dt): {1.0/dt:.2f} Hz")
+        print(f"")
+        print(f"=== REAL-TIME PERFORMANCE ===")
+        print(f"Total solve time: {np.sum(valid_solve_times)*1000:.2f} ms")
+        print(f"Total simulation time: {actual_steps * dt:.2f} s")
+        print(f"Real-time factor: {(actual_steps * dt) / np.sum(valid_solve_times):.2f}x")
+        if avg_frequency >= 1.0/dt:
+            print(f"✅ MPC solver frequency ({avg_frequency:.1f} Hz) meets real-time requirement ({1.0/dt:.1f} Hz)")
+        else:
+            print(f"⚠️  MPC solver frequency ({avg_frequency:.1f} Hz) below real-time requirement ({1.0/dt:.1f} Hz)")
+        if np.sum(valid_solve_times) > actual_steps * dt:
+            print(f"⚠️  MPC solver is slower than real-time!")
+        else:
+            print(f"✅ MPC solver is faster than real-time")
+    
+    # Plot results with timing information
+    plot_results_with_timing(states, inputs, solve_times, dt, spline_dynamics)
     
     return {
         'states': states,
-        'inputs': inputs
+        'inputs': inputs,
+        'solve_times': solve_times
     }
 
-def plot_results(states, inputs, dt, spline_dynamics):
-    """Plot simulation results."""
+def plot_results_with_timing(states, inputs, solve_times, dt, spline_dynamics):
+    """Plot simulation results including MPC timing information."""
     # Create time vector
     t = np.arange(len(states)) * dt
     
-    # Create figure with subplots - changed to 3x2 to add velocity plot
-    fig, axs = plt.subplots(3, 2, figsize=(15, 12))
+    # Create figure with subplots - changed to 4x3 to add frequency plots
+    fig, axs = plt.subplots(4, 3, figsize=(18, 16))
     
     # Plot path and vehicle trajectory
     axs[0, 0].set_title('Path and Vehicle Trajectory')
@@ -518,11 +562,10 @@ def plot_results(states, inputs, dt, spline_dynamics):
     vehicle_points = np.array([spline_dynamics.spline_curvilinear_to_cartesian(state)[:2] for state in states])
     axs[0, 0].plot(vehicle_points[:, 0], vehicle_points[:, 1], 'r-', label='Vehicle')
     
-    # Mark initial pose with heading
+    # Mark initial and final poses
     initial_state = states[0]
     initial_pos = vehicle_points[0]
-    # Get heading from spline dynamics
-    initial_heading = spline_dynamics.spline_coords.get_heading(initial_state[0])  # heading at s position
+    initial_heading = spline_dynamics.spline_coords.get_heading(initial_state[0])
     arrow_length = 2.0
     initial_dx = arrow_length * np.cos(initial_heading)
     initial_dy = arrow_length * np.sin(initial_heading)
@@ -530,10 +573,9 @@ def plot_results(states, inputs, dt, spline_dynamics):
                    head_width=0.5, head_length=0.8, fc='green', ec='green', linewidth=2)
     axs[0, 0].plot(initial_pos[0], initial_pos[1], 'go', markersize=8, label='Start')
     
-    # Mark final pose with heading
     final_state = states[-1]
     final_pos = vehicle_points[-1]
-    final_heading = spline_dynamics.spline_coords.get_heading(final_state[0])  # heading at s position
+    final_heading = spline_dynamics.spline_coords.get_heading(final_state[0])
     final_dx = arrow_length * np.cos(final_heading)
     final_dy = arrow_length * np.sin(final_heading)
     axs[0, 0].arrow(final_pos[0], final_pos[1], final_dx, final_dy, 
@@ -552,17 +594,17 @@ def plot_results(states, inputs, dt, spline_dynamics):
     axs[0, 1].legend()
     axs[0, 1].grid(True)
     
-    # Plot velocity - NEW
-    axs[1, 0].set_title('Velocity Tracking')
-    axs[1, 0].plot(t, states[:, 4], 'b-', linewidth=2, label='Actual Velocity')
-    axs[1, 0].set_ylabel('Velocity [m/s]')
-    axs[1, 0].set_xlabel('Time [s]')
-    axs[1, 0].legend()
-    axs[1, 0].grid(True)
+    # Plot velocity
+    axs[0, 2].set_title('Velocity Tracking')
+    axs[0, 2].plot(t, states[:, 4], 'b-', linewidth=2, label='Actual Velocity')
+    axs[0, 2].set_ylabel('Velocity [m/s]')
+    axs[0, 2].set_xlabel('Time [s]')
+    axs[0, 2].legend()
+    axs[0, 2].grid(True)
     
     # Plot inputs
-    axs[1, 1].set_title('Control Inputs')
-    ax_steer = axs[1, 1]
+    axs[1, 0].set_title('Control Inputs')
+    ax_steer = axs[1, 0]
     ax_accel = ax_steer.twinx()
     
     line1 = ax_steer.plot(t[:-1], np.rad2deg(inputs[:, 0]), 'b-', label='Steering Angle')
@@ -572,85 +614,121 @@ def plot_results(states, inputs, dt, spline_dynamics):
     ax_accel.set_ylabel('Acceleration [m/s²]', color='r')
     ax_steer.set_xlabel('Time [s]')
     
-    # Combine legends
     lines = line1 + line2
     labels = [l.get_label() for l in lines]
     ax_steer.legend(lines, labels, loc='upper right')
-    
     ax_steer.grid(True)
     
+    # Plot MPC solve times
+    axs[1, 1].set_title('MPC Solve Times')
+    actual_steps = len([t for t in solve_times if t > 0])
+    if actual_steps > 0:
+        valid_solve_times = solve_times[:actual_steps]
+        axs[1, 1].plot(t[:actual_steps], valid_solve_times * 1000, 'g-', linewidth=2, label='Solve Time')
+        axs[1, 1].axhline(y=dt * 1000, color='r', linestyle='--', label=f'Real-time limit ({dt*1000:.0f} ms)')
+        axs[1, 1].set_ylabel('Solve Time [ms]')
+        axs[1, 1].set_xlabel('Time [s]')
+        axs[1, 1].legend()
+        axs[1, 1].grid(True)
+    
+    # Plot MPC solve frequencies
+    axs[1, 2].set_title('MPC Solve Frequency')
+    if actual_steps > 0:
+        valid_solve_times = solve_times[:actual_steps]
+        frequencies = 1.0 / valid_solve_times  # Convert solve times to frequencies
+        axs[1, 2].plot(t[:actual_steps], frequencies, 'purple', linewidth=2, label='Solve Frequency')
+        axs[1, 2].axhline(y=1.0/dt, color='r', linestyle='--', label=f'Required freq ({1.0/dt:.1f} Hz)')
+        axs[1, 2].set_ylabel('Frequency [Hz]')
+        axs[1, 2].set_xlabel('Time [s]')
+        axs[1, 2].legend()
+        axs[1, 2].grid(True)
+    
+    # Plot MPC solve time histogram
+    axs[2, 0].set_title('Solve Time Distribution')
+    if actual_steps > 0:
+        valid_solve_times = solve_times[:actual_steps]
+        axs[2, 0].hist(valid_solve_times * 1000, bins=20, alpha=0.7, color='green', edgecolor='black')
+        axs[2, 0].axvline(x=np.mean(valid_solve_times) * 1000, color='red', linestyle='--', 
+                         label=f'Mean: {np.mean(valid_solve_times)*1000:.2f} ms')
+        axs[2, 0].axvline(x=dt * 1000, color='orange', linestyle='--', 
+                         label=f'Real-time: {dt*1000:.0f} ms')
+        axs[2, 0].set_xlabel('Solve Time [ms]')
+        axs[2, 0].set_ylabel('Frequency')
+        axs[2, 0].legend()
+        axs[2, 0].grid(True, alpha=0.3)
+    
+    # Plot MPC frequency histogram
+    axs[2, 1].set_title('Frequency Distribution')
+    if actual_steps > 0:
+        valid_solve_times = solve_times[:actual_steps]
+        frequencies = 1.0 / valid_solve_times
+        axs[2, 1].hist(frequencies, bins=20, alpha=0.7, color='purple', edgecolor='black')
+        axs[2, 1].axvline(x=np.mean(frequencies), color='red', linestyle='--', 
+                         label=f'Mean: {np.mean(frequencies):.1f} Hz')
+        axs[2, 1].axvline(x=1.0/dt, color='orange', linestyle='--', 
+                         label=f'Required: {1.0/dt:.1f} Hz')
+        axs[2, 1].set_xlabel('Frequency [Hz]')
+        axs[2, 1].set_ylabel('Count')
+        axs[2, 1].legend()
+        axs[2, 1].grid(True, alpha=0.3)
+    
+    # Plot real-time performance metric
+    axs[2, 2].set_title('Real-time Performance')
+    if actual_steps > 0:
+        valid_solve_times = solve_times[:actual_steps]
+        rt_performance = dt / valid_solve_times  # Real-time factor for each step
+        axs[2, 2].plot(t[:actual_steps], rt_performance, 'orange', linewidth=2, label='RT Factor')
+        axs[2, 2].axhline(y=1.0, color='red', linestyle='--', label='Real-time threshold')
+        axs[2, 2].set_ylabel('Real-time Factor')
+        axs[2, 2].set_xlabel('Time [s]')
+        axs[2, 2].legend()
+        axs[2, 2].grid(True)
+        axs[2, 2].set_yscale('log')  # Log scale for better visualization
+    
     # Plot errors
-    axs[2, 0].set_title('Lateral Error')
-    axs[2, 0].plot(t, states[:, 2], 'b-')
-    axs[2, 0].set_ylabel('Lateral Error [m]')
-    axs[2, 0].set_xlabel('Time [s]')
-    axs[2, 0].grid(True)
+    axs[3, 0].set_title('Lateral Error')
+    axs[3, 0].plot(t, states[:, 2], 'b-')
+    axs[3, 0].set_ylabel('Lateral Error [m]')
+    axs[3, 0].set_xlabel('Time [s]')
+    axs[3, 0].grid(True)
     
-    axs[2, 1].set_title('Heading Error')
-    axs[2, 1].plot(t, states[:, 3], 'r-')
-    axs[2, 1].set_ylabel('Heading Error [rad]')
-    axs[2, 1].set_xlabel('Time [s]')
-    axs[2, 1].grid(True)
+    axs[3, 1].set_title('Heading Error')
+    axs[3, 1].plot(t, states[:, 3], 'r-')
+    axs[3, 1].set_ylabel('Heading Error [rad]')
+    axs[3, 1].set_xlabel('Time [s]')
+    axs[3, 1].grid(True)
+    
+    # Plot frequency vs time with moving average
+    axs[3, 2].set_title('Frequency Analysis')
+    if actual_steps > 0:
+        valid_solve_times = solve_times[:actual_steps]
+        frequencies = 1.0 / valid_solve_times
+        
+        # Plot instantaneous frequency
+        axs[3, 2].plot(t[:actual_steps], frequencies, 'purple', alpha=0.6, linewidth=1, label='Instantaneous')
+        
+        # Plot moving average frequency (window of 10 samples)
+        if len(frequencies) >= 10:
+            window_size = min(10, len(frequencies))
+            moving_avg_freq = np.convolve(frequencies, np.ones(window_size)/window_size, mode='valid')
+            t_moving = t[window_size-1:actual_steps]
+            axs[3, 2].plot(t_moving, moving_avg_freq, 'darkviolet', linewidth=2, label=f'Moving avg ({window_size})')
+        
+        axs[3, 2].axhline(y=1.0/dt, color='red', linestyle='--', label=f'Required ({1.0/dt:.1f} Hz)')
+        axs[3, 2].axhline(y=np.mean(frequencies), color='green', linestyle=':', label=f'Mean ({np.mean(frequencies):.1f} Hz)')
+        axs[3, 2].set_ylabel('Frequency [Hz]')
+        axs[3, 2].set_xlabel('Time [s]')
+        axs[3, 2].legend()
+        axs[3, 2].grid(True)
     
     plt.tight_layout()
     plt.show()
 
-def plot_results_advanced(states, inputs, spline_coords, dt):
-    """Plot simulation results using advanced visualization from basic_example.py."""
-    # Create time vector
-    t = np.arange(len(states)) * dt
-
-    plt.figure(figsize=(15, 10))
-
-    # Plot 1: Reference path and waypoints
-    plt.subplot(2, 2, 1)
-    # Generate trajectory for plotting
-    trajectory = spline_coords.generate_trajectory(num_points=200)
-    plt.plot(trajectory['positions'][:, 0], trajectory['positions'][:, 1], 'b-', linewidth=2, label='Spline')
-    # Plot actual vehicle trajectory
-    vehicle_points = np.array([spline_coords.curvilinear_to_cartesian(s, d) for s, d in zip(states[:, 0], states[:, 2])])
-    plt.plot(vehicle_points[:, 0], vehicle_points[:, 1], 'r--', linewidth=2, label='Vehicle Trajectory', alpha=0.8)
-    plt.plot(vehicle_points[0, 0], vehicle_points[0, 1], 'go', markersize=10, label='Start')
-    plt.plot(vehicle_points[-1, 0], vehicle_points[-1, 1], 'rs', markersize=10, label='End')
-    plt.xlabel('X [m]')
-    plt.ylabel('Y [m]')
-    plt.title('Reference Path with Vehicle Trajectory')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.axis('equal')
-
-    # Plot 2: Curvature profile
-    plt.subplot(2, 2, 2)
-    s_fine = np.linspace(0, spline_coords.path_length, 200)
-    curvatures = [spline_coords.get_curvature(s) for s in s_fine]
-    plt.plot(s_fine, curvatures, 'g-', linewidth=2)
-    plt.xlabel('Arc Length s [m]')
-    plt.ylabel('Curvature κ [1/m]')
-    plt.title('Path Curvature Profile')
-    plt.grid(True, alpha=0.3)
-
-    # Plot 3: State evolution
-    plt.subplot(2, 2, 3)
-    plt.plot(t, states[:, 0], 'g-', label='s (progress)')
-    plt.plot(t, states[:, 2], 'b-', label='e_y (lateral error)')
-    plt.xlabel('Time [s]')
-    plt.ylabel('Position [m]')
-    plt.title('Vehicle Position')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-
-    # Plot 4: Control inputs
-    plt.subplot(2, 2, 4)
-    plt.plot(t[:-1], np.rad2deg(inputs[:, 0]), 'b-', label='Steering δ')
-    plt.plot(t[:-1], inputs[:, 1], 'r-', label='Acceleration a')
-    plt.xlabel('Time [s]')
-    plt.ylabel('Control Input')
-    plt.title('Control Inputs')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    plt.show()
+def plot_results(states, inputs, dt, spline_dynamics):
+    """Plot simulation results - wrapper for backward compatibility."""
+    # Create dummy solve times array for backward compatibility
+    solve_times = np.zeros(len(inputs))
+    plot_results_with_timing(states, inputs, solve_times, dt, spline_dynamics)
 
 def run_both_tests():
     """Run both curved and straight-line tests for comparison."""
