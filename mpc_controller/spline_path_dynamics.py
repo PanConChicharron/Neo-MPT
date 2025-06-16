@@ -37,7 +37,7 @@ class SplinePathDynamics(CurvilinearDynamics):
         
         # Extract spline coefficients for symbolic representation
         self._extract_spline_coefficients()
-        
+
         # Create symbolic spline functions
         self._create_symbolic_spline_functions()
         
@@ -78,6 +78,24 @@ class SplinePathDynamics(CurvilinearDynamics):
         # Symbolic parameter
         u = ca.SX.sym('u')
         
+        # Create a single flattened parameter vector
+        n_knots = self.knots.shape[0]
+        n_coeffs_x = self.coeffs_x.shape[0] * self.coeffs_x.shape[1]  # 4 * n_segments
+        n_coeffs_y = self.coeffs_y.shape[0] * self.coeffs_y.shape[1]  # 4 * n_segments
+        total_params = n_knots + n_coeffs_x + n_coeffs_y
+        
+        # Single parameter vector: [knots, coeffs_x_flat, coeffs_y_flat]
+        params = ca.SX.sym('params', total_params)
+        
+        # Extract parameters from the flattened vector
+        knots_from_params = params[:n_knots]
+        coeffs_x_flat = params[n_knots:n_knots + n_coeffs_x]
+        coeffs_y_flat = params[n_knots + n_coeffs_x:n_knots + n_coeffs_x + n_coeffs_y]
+        
+        # Reshape coefficients back to matrix form (4 x n_segments)
+        coeffs_x_from_params = ca.reshape(coeffs_x_flat, self.coeffs_x.shape[0], self.coeffs_x.shape[1])
+        coeffs_y_from_params = ca.reshape(coeffs_y_flat, self.coeffs_y.shape[0], self.coeffs_y.shape[1])
+        
         # Initialize outputs
         x_val = ca.SX.zeros(1)
         y_val = ca.SX.zeros(1)
@@ -91,20 +109,20 @@ class SplinePathDynamics(CurvilinearDynamics):
             # Condition: knots[i] <= u < knots[i+1] (or u <= knots[i+1] for last segment)
             if i == 0:
                 # For first segment, include u = knots[0]
-                condition = ca.logic_and(u >= self.knots_ca[i], u < self.knots_ca[i+1])
+                condition = ca.logic_and(u >= knots_from_params[i], u < knots_from_params[i+1])
             elif i == self.n_segments - 1:
                 # For last segment, include u = knots[-1]
-                condition = ca.logic_and(u >= self.knots_ca[i], u <= self.knots_ca[i+1])
+                condition = ca.logic_and(u >= knots_from_params[i], u <= knots_from_params[i+1])
             else:
-                condition = ca.logic_and(u >= self.knots_ca[i], u < self.knots_ca[i+1])
+                condition = ca.logic_and(u >= knots_from_params[i], u < knots_from_params[i+1])
             
             # Local parameter within segment
-            t = u - self.knots_ca[i]
+            t = u - knots_from_params[i]
             
             # Cubic polynomial: f(t) = a*t^3 + b*t^2 + c*t + d
             # Note: scipy stores coefficients in reverse order [d, c, b, a]
-            d_x, c_x, b_x, a_x = self.coeffs_x_ca[0,i], self.coeffs_x_ca[1,i], self.coeffs_x_ca[2,i], self.coeffs_x_ca[3,i]
-            d_y, c_y, b_y, a_y = self.coeffs_y_ca[0,i], self.coeffs_y_ca[1,i], self.coeffs_y_ca[2,i], self.coeffs_y_ca[3,i]
+            d_x, c_x, b_x, a_x = coeffs_x_from_params[0,i], coeffs_x_from_params[1,i], coeffs_x_from_params[2,i], coeffs_x_from_params[3,i]
+            d_y, c_y, b_y, a_y = coeffs_y_from_params[0,i], coeffs_y_from_params[1,i], coeffs_y_from_params[2,i], coeffs_y_from_params[3,i]
             
             # Position
             x_seg = a_x*t**3 + b_x*t**2 + c_x*t + d_x
@@ -126,18 +144,18 @@ class SplinePathDynamics(CurvilinearDynamics):
             d2x_du2 = ca.if_else(condition, d2x_seg, d2x_du2)
             d2y_du2 = ca.if_else(condition, d2y_seg, d2y_du2)
         
-        # Create symbolic functions
-        self.spline_position = ca.Function('spline_pos', [u, self.knots_ca, self.coeffs_x_ca, self.coeffs_y_ca], 
+        # Create symbolic functions with single parameter vector
+        self.spline_position = ca.Function('spline_pos', [u, params], 
                                          [ca.vertcat(x_val, y_val)])
-        self.spline_tangent = ca.Function('spline_tangent', [u, self.knots_ca, self.coeffs_x_ca, self.coeffs_y_ca], 
+        self.spline_tangent = ca.Function('spline_tangent', [u, params], 
                                         [ca.vertcat(dx_du, dy_du)])
-        self.spline_second_deriv = ca.Function('spline_second_deriv', [u, self.knots_ca, self.coeffs_x_ca, self.coeffs_y_ca], 
+        self.spline_second_deriv = ca.Function('spline_second_deriv', [u, params], 
                                              [ca.vertcat(d2x_du2, d2y_du2)])
         
         # Tangent magnitude: |dx/du|
         tangent_mag = ca.sqrt(dx_du**2 + dy_du**2)
         self.spline_tangent_magnitude = ca.Function('spline_tangent_mag', 
-                                                  [u, self.knots_ca, self.coeffs_x_ca, self.coeffs_y_ca], 
+                                                  [u, params], 
                                                   [tangent_mag])
         
         # Curvature: κ = (x'y'' - y'x'') / (x'² + y'²)^(3/2)
@@ -146,7 +164,7 @@ class SplinePathDynamics(CurvilinearDynamics):
         # Add small epsilon to avoid division by zero
         curvature = numerator / (denominator + 1e-12)
         self.spline_curvature = ca.Function('spline_curvature', 
-                                          [u, self.knots_ca, self.coeffs_x_ca, self.coeffs_y_ca], 
+                                          [u, params], 
                                           [curvature])
     
     def _create_spline_symbolic_model(self):
@@ -166,10 +184,17 @@ class SplinePathDynamics(CurvilinearDynamics):
         
         self.input = ca.vertcat(self.delta, self.a)
         
+        # Create the flattened parameter vector for symbolic computation
+        n_knots = self.knots.shape[0]
+        n_coeffs_x = self.coeffs_x.shape[0] * self.coeffs_x.shape[1]
+        n_coeffs_y = self.coeffs_y.shape[0] * self.coeffs_y.shape[1]
+        total_params = n_knots + n_coeffs_x + n_coeffs_y
+        
+        self.parameters = ca.SX.sym('params', total_params)
+        
         # Get spline properties symbolically using the chord-length parameter u
-        # Use the symbolic placeholders but substitute numerical values at function creation
-        self.kappa = self.spline_curvature(self.u, self.knots_ca, self.coeffs_x_ca, self.coeffs_y_ca)
-        self.ds_du = self.spline_tangent_magnitude(self.u, self.knots_ca, self.coeffs_x_ca, self.coeffs_y_ca)
+        self.kappa = self.spline_curvature(self.u, self.parameters)
+        self.ds_du = self.spline_tangent_magnitude(self.u, self.parameters)
         
         # Vehicle slip angle (from bicycle model)
         lf = self.vehicle_model.wheelbase_front
@@ -210,29 +235,11 @@ class SplinePathDynamics(CurvilinearDynamics):
         v_dot = self.a
         
         self.dynamics = ca.vertcat(s_dot, u_dot, e_y_dot, e_ψ_dot, v_dot)
-        
-        # Substitute numerical values for spline parameters to eliminate free variables
-        self.substitutions = {}
-        
-        # Add knots substitutions
-        for i in range(len(self.knots_np)):
-            self.substitutions[self.knots_ca[i]] = self.knots_np[i]
-        
-        # Add coefficients substitutions
-        for i in range(self.coeffs_x_np.shape[0]):
-            for j in range(self.coeffs_x_np.shape[1]):
-                self.substitutions[self.coeffs_x_ca[i,j]] = self.coeffs_x_np[i,j]
-                self.substitutions[self.coeffs_y_ca[i,j]] = self.coeffs_y_np[i,j]
-        
-        # Apply substitutions to dynamics
-        dynamics_with_values = self.dynamics
-        for sym_var, num_val in self.substitutions.items():
-            dynamics_with_values = ca.substitute(dynamics_with_values, sym_var, ca.SX(num_val))
-        
-        # Create function for dynamics evaluation (no parameter vector needed)
+
+        # Create function for dynamics evaluation with parameter vector
         self.dynamics_func = ca.Function('spline_path_dynamics',
-                                       [self.state, self.input],
-                                       [dynamics_with_values])
+                                       [self.state, self.input, self.parameters],
+                                       [self.dynamics])
     
     def get_discrete_dynamics(self, dt: float) -> ca.Function:
         """
@@ -248,24 +255,21 @@ class SplinePathDynamics(CurvilinearDynamics):
         if dt == self._current_dt and dt in self._discrete_dynamics_cache:
             return self._discrete_dynamics_cache[dt]
         
-        # Create new discrete dynamics function
-        # RK4 integration - now fully symbolic
-        k1 = self.dynamics
-        k2 = ca.substitute(self.dynamics, self.state, self.state + dt/2 * k1)
-        k3 = ca.substitute(self.dynamics, self.state, self.state + dt/2 * k2)
-        k4 = ca.substitute(self.dynamics, self.state, self.state + dt * k3)
+        # Get dynamics with numerical parameter substitution
+        dynamics_substituted = self.get_continuous_dynamics_with_substitution()
+        
+        # Create new discrete dynamics function using RK4 integration
+        k1 = dynamics_substituted
+        k2 = ca.substitute(dynamics_substituted, self.state, self.state + dt/2 * k1)
+        k3 = ca.substitute(dynamics_substituted, self.state, self.state + dt/2 * k2)
+        k4 = ca.substitute(dynamics_substituted, self.state, self.state + dt * k3)
         
         state_next = self.state + dt/6 * (k1 + 2*k2 + 2*k3 + k4)
         
-        # Apply the same substitutions to the discrete dynamics
-        state_next_with_values = state_next
-        for sym_var, num_val in self.substitutions.items():
-            state_next_with_values = ca.substitute(state_next_with_values, sym_var, ca.SX(num_val))
-        
-        # Use the same parameter vector p that we defined in the continuous dynamics
+        # Create discrete dynamics function (no parameters needed since they're substituted)
         discrete_dynamics = ca.Function('discrete_spline_path_dynamics',
                                       [self.state, self.input],
-                                      [state_next_with_values])
+                                      [state_next])
         
         # Cache the function
         self._discrete_dynamics_cache[dt] = discrete_dynamics
@@ -282,6 +286,30 @@ class SplinePathDynamics(CurvilinearDynamics):
         """
         return self.dynamics_func
     
+    def get_continuous_dynamics_with_substitution(self) -> ca.SX:
+        """
+        Get continuous-time spline path dynamics with numerical parameter substitution.
+        This is used for ACADOS integration where parameters are substituted directly.
+        
+        Returns:
+            CasADi SX expression for continuous spline path dynamics (state derivatives)
+        """
+        # Create numerical parameter values
+        params_numerical = np.concatenate([
+            self.knots_np, 
+            self.coeffs_x_np.flatten('F'), 
+            self.coeffs_y_np.flatten('F')
+        ])
+        
+        # Substitute numerical values into the symbolic dynamics
+        dynamics_substituted = self.dynamics
+        for i, param_val in enumerate(params_numerical):
+            dynamics_substituted = ca.substitute(dynamics_substituted, 
+                                               self.parameters[i], 
+                                               ca.SX(param_val))
+        
+        return dynamics_substituted
+    
     def update_spline_parameters(self, solver):
         """Update spline parameters in the acados solver."""
         # Get current parameter values
@@ -297,8 +325,8 @@ class SplinePathDynamics(CurvilinearDynamics):
         # Update only the spline parameters while preserving other parameters
         new_params = np.concatenate([
             self.knots_np,
-            self.coeffs_x_np.flatten(),
-            self.coeffs_y_np.flatten()
+            self.coeffs_x_np.flatten('F'),
+            self.coeffs_y_np.flatten('F')
         ])
         
         print(f"New params dimension: {len(new_params)}")
@@ -358,9 +386,9 @@ class SplinePathDynamics(CurvilinearDynamics):
         Returns:
             ds/du: magnitude of tangent vector
         """
-        # Use symbolic function for numerical evaluation with numerical parameters
-        result = self.spline_tangent_magnitude(u, self.knots_np, self.coeffs_x_np, self.coeffs_y_np)
-        return float(result)
+        # Use symbolic function for numerical evaluation with flattened parameters
+        parameters = np.concatenate([self.knots_np, self.coeffs_x_np.flatten('F'), self.coeffs_y_np.flatten('F')])
+        return float(self.spline_tangent_magnitude(u, parameters))
     
     def get_spline_state_at_progress(self, s: float) -> Dict:
         """
@@ -377,10 +405,11 @@ class SplinePathDynamics(CurvilinearDynamics):
         u = np.clip(u, self.spline_coords.u_values[0], self.spline_coords.u_values[-1])
         
         # Get curvature at this chord-length parameter using symbolic function
-        curvature = float(self.spline_curvature(u, self.knots_np, self.coeffs_x_np, self.coeffs_y_np))
+        parameters = np.concatenate([self.knots_np, self.coeffs_x_np.flatten('F'), self.coeffs_y_np.flatten('F')])
+        curvature = float(self.spline_curvature(u, parameters))
         
         # Get tangent magnitude using symbolic function
-        ds_du = float(self.spline_tangent_magnitude(u, self.knots_np, self.coeffs_x_np, self.coeffs_y_np))
+        ds_du = float(self.spline_tangent_magnitude(u, parameters))
         
         return {
             'u': u,
@@ -403,53 +432,46 @@ class SplinePathDynamics(CurvilinearDynamics):
         # Use the existing Newton's method in CurvilinearCoordinates to find the closest point
         # Note: CurvilinearCoordinates.cartesian_to_curvilinear returns (u, d) 
         # where u is the chord-length parameter and d is the lateral distance
-        try:
-            u, e_y = self.spline_coords.cartesian_to_curvilinear(np.array([x, y]))
-            
-            # Clamp u to valid range
-            u_min = self.spline_coords.u_values[0]
-            u_max = self.spline_coords.u_values[-1]
-            u_clamped = np.clip(u, u_min, u_max)
-            
-            if abs(u - u_clamped) > 1e-6:
-                print(f"WARNING: cartesian_to_curvilinear u={u:.6f} clamped to [{u_min:.6f}, {u_max:.6f}] -> {u_clamped:.6f}")
-            
-            # Convert chord-length parameter to arc-length using the proper method
-            s = self.spline_coords.chord_to_arc_length(u_clamped)
-            
-            # Get reference heading at this chord-length parameter using numerical evaluation
-            tangent_result = self.spline_tangent(u_clamped, self.knots_np, self.coeffs_x_np, self.coeffs_y_np)
-            
-            # Extract tangent components (handle CasADi DM if needed)
-            if hasattr(tangent_result, 'full'):
-                tangent = tangent_result.full().flatten()
-            else:
-                tangent = np.array(tangent_result).flatten()
-            
-            # Check for zero tangent
-            tangent_norm = np.linalg.norm(tangent)
-            if tangent_norm < 1e-6:
-                print(f"WARNING: Zero tangent in cartesian_to_curvilinear at u={u_clamped:.6f}")
-                # For straight line, use default heading
-                ref_heading = 0.0
-            else:
-                # Calculate reference heading
-                ref_heading = np.arctan2(tangent[1], tangent[0])
-            
-            # Calculate heading error
-            e_ψ = theta - ref_heading
-            e_ψ = np.arctan2(np.sin(e_ψ), np.cos(e_ψ))  # Normalize to [-π, π]
-            
-            return np.array([s, u_clamped, e_y, e_ψ, v])
-            
-        except Exception as e:
-            print(f"ERROR: cartesian_to_curvilinear failed for point [{x:.3f}, {y:.3f}]: {e}")
-            # Return a safe fallback state
-            # Assume we're at the end of the path if conversion fails
-            u_max = self.spline_coords.u_values[-1]
-            s_max = self.spline_coords.path_length
-            return np.array([s_max, u_max, 0.0, 0.0, v])
-    
+
+        u, e_y = self.spline_coords.cartesian_to_curvilinear(np.array([x, y]))
+        
+        # Clamp u to valid range
+        u_min = self.spline_coords.u_values[0]
+        u_max = self.spline_coords.u_values[-1]
+        u_clamped = np.clip(u, u_min, u_max)
+        
+        if abs(u - u_clamped) > 1e-6:
+            print(f"WARNING: cartesian_to_curvilinear u={u:.6f} clamped to [{u_min:.6f}, {u_max:.6f}] -> {u_clamped:.6f}")
+        
+        # Convert chord-length parameter to arc-length using the proper method
+        s = self.spline_coords.chord_to_arc_length(u_clamped)
+        
+        # Get reference heading at this chord-length parameter using numerical evaluation
+        parameters = np.concatenate([self.knots_np, self.coeffs_x_np.flatten('F'), self.coeffs_y_np.flatten('F')])
+        tangent_result = self.spline_tangent(u_clamped, parameters)
+        
+        # Extract tangent components (handle CasADi DM if needed)
+        if hasattr(tangent_result, 'full'):
+            tangent = tangent_result.full().flatten()
+        else:
+            tangent = np.array(tangent_result).flatten()
+        
+        # Check for zero tangent
+        tangent_norm = np.linalg.norm(tangent)
+        if tangent_norm < 1e-6:
+            print(f"WARNING: Zero tangent in cartesian_to_curvilinear at u={u_clamped:.6f}")
+            # For straight line, use default heading
+            ref_heading = 0.0
+        else:
+            # Calculate reference heading
+            ref_heading = np.arctan2(tangent[1], tangent[0])
+        
+        # Calculate heading error
+        e_ψ = theta - ref_heading
+        e_ψ = np.arctan2(np.sin(e_ψ), np.cos(e_ψ))  # Normalize to [-π, π]
+        
+        return np.array([s, u_clamped, e_y, e_ψ, v])
+
     def spline_curvilinear_to_cartesian(self, spline_curvilinear_state: np.ndarray) -> np.ndarray:
         """
         Convert spline curvilinear state to Cartesian coordinates.
@@ -471,11 +493,13 @@ class SplinePathDynamics(CurvilinearDynamics):
             print(f"WARNING: u={u:.6f} clamped to [{u_min:.6f}, {u_max:.6f}] -> {u_clamped:.6f}")
         
         # Get reference position using the clamped chord-length parameter
-        ref_pos = self.spline_position(u_clamped, self.knots_np, self.coeffs_x_np, self.coeffs_y_np)
+        parameters = np.concatenate([self.knots_np, self.coeffs_x_np.flatten('F'), self.coeffs_y_np.flatten('F')])
+
+        ref_pos = self.spline_position(u_clamped, parameters)
         ref_pos = np.array([float(ref_pos[0]), float(ref_pos[1])])
         
         # Get reference heading using the clamped chord-length parameter
-        tangent = self.spline_tangent(u_clamped, self.knots_np, self.coeffs_x_np, self.coeffs_y_np)
+        tangent = self.spline_tangent(u_clamped, parameters)
         tangent = np.array([float(tangent[0]), float(tangent[1])])
         tangent_norm = np.linalg.norm(tangent)
         
@@ -486,8 +510,8 @@ class SplinePathDynamics(CurvilinearDynamics):
             if u_clamped >= u_max:
                 # At end of path, use the heading from just before the end
                 u_safe = u_max - 1e-3
-                tangent_safe = self.spline_tangent(u_safe, self.knots_np, self.coeffs_x_np, self.coeffs_y_np)
-                tangent_safe = np.array([float(tangent_safe[0]), float(tangent_safe[1])])
+                parameters = np.concatenate([self.knots_np, self.coeffs_x_np.flatten('F'), self.coeffs_y_np.flatten('F')])
+                tangent_safe = self.spline_tangent(u_safe, parameters)
                 tangent_safe_norm = np.linalg.norm(tangent_safe)
                 if tangent_safe_norm > 1e-6:
                     ref_heading = np.arctan2(tangent_safe[1], tangent_safe[0])

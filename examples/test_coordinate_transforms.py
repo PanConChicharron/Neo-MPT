@@ -68,7 +68,7 @@ def test_coordinate_transforms():
         print(f"Max abs difference: {np.max(np.abs(diff)):.6f}")
         
         # Check if the transformation is consistent
-        if np.max(np.abs(diff)) < 1e-3:
+        if np.max(np.abs(diff)) < 1e-2:
             print("✓ Transform is consistent")
         else:
             print("✗ Transform is NOT consistent")

@@ -88,24 +88,18 @@ class MPCController:
         # Get symbolic variables from spline dynamics
         x = self.spline_dynamics.state  # [s, u, e_y, e_ψ, v]
         u = self.spline_dynamics.input   # [delta, a]
-        
-        # Get spline parameters
-        knots = self.spline_dynamics.knots_ca
-        coeffs_x = self.spline_dynamics.coeffs_x_ca
-        coeffs_y = self.spline_dynamics.coeffs_y_ca
-        
-        # Get CONTINUOUS dynamics (not discrete!)
-        # ACADOS expects continuous dynamics f(x,u) = dx/dt, not discrete x_next
-        continuous_dynamics = self.spline_dynamics.get_continuous_dynamics()
+
+        # Get CONTINUOUS dynamics with numerical parameter substitution
+        # ACADOS expects continuous dynamics f(x,u) = dx/dt, not discrete
+        dynamics_expr = self.spline_dynamics.get_continuous_dynamics_with_substitution()
         
         # Set model - ACADOS expects continuous dynamics, not discrete
-        ocp.model.f_expl_expr = continuous_dynamics(x, u)
+        ocp.model.f_expl_expr = dynamics_expr
         ocp.model.x = x
         ocp.model.u = u
         ocp.model.name = 'spline_path_vehicle'
         
         # Since we're using direct substitution approach, we don't need parameters in the OCP
-        # Remove parameter setup
         ocp.dims.np = 0  # No parameters needed
         
         # Dimensions

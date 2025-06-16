@@ -54,7 +54,6 @@ class CurvilinearCoordinates(ChordLengthParametricSpline2D):
             
             # Compute error vector and its derivative
             error = point - spline_point
-            error_dot = -tangent
             
             # Update parameter
             u_new = u_guess + np.dot(error, tangent) / np.dot(tangent, tangent)
