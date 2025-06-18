@@ -301,12 +301,12 @@ def run_simulation(path_type="curved"):
     # Create MPC controller with more conservative settings
     mpc = MPCController(
         vehicle_model=vehicle_model,
-        prediction_horizon=2.0,
+        prediction_horizon=5.0,
         dt=0.1
     )
     
     # Set cost weights (must be done before set_path)
-    state_weights = np.array([5.0, 0.0, 0.5, 0.1, 1.0])  # [s, u, e_y, e_ψ, v] - velocity weight = 0.0
+    state_weights = np.array([1e0, 0.0, 1e2, 1e-1, 1e-1])  # [s, u, e_y, e_ψ, v] - velocity weight = 0.0
     input_weights = np.array([5, 10])  # [delta, a] - very low acceleration penalty
     terminal_weights = 2* state_weights  # [s, u, e_y, e_ψ, v] - terminal velocity weight = 0.0
     
@@ -366,7 +366,7 @@ def run_simulation(path_type="curved"):
         print(f"  Current s: {current_s:.2f} m, Path length: {path_length:.2f} m, Remaining: {remaining_path:.2f} m")
         
         # Stop simulation if we've reached the end of the path
-        if remaining_path <= 0.1:  # Within 10cm of the end
+        if remaining_path <= 0.5:  # Within 10cm of the end
             print(f"🏁 Reached end of path! Stopping simulation at step {step}")
             print(f"   Final position: s={current_s:.2f} m (path length: {path_length:.2f} m)")
             # Trim arrays to actual simulation length
@@ -403,46 +403,20 @@ def run_simulation(path_type="curved"):
         
         # Calculate how much path is remaining
         remaining_path = path_length - current_s
+
+        lookahead_distance = 25.0
         
         # Set reference horizon based on remaining path
-        if remaining_path > 4.0:
+        if remaining_path > lookahead_distance:
             # Normal case: look ahead 4.0 meters
-            s_end = current_s + 4.0
+            s_end = current_s + lookahead_distance
         else:
             # Near end of path: just go to the end and maintain that position
             s_end = path_length
         
         s_values = np.linspace(current_s, s_end, mpc.N + 1)
-        
-        # Improved velocity planning for end-of-path approach
-        current_velocity = states[step][4]
-        
-        if remaining_path < 5.0:
-            # More aggressive braking when approaching the end
-            # Calculate required deceleration to stop at the end
-            # v² = v₀² + 2as  =>  a = (v² - v₀²) / (2s)
-            # To reach 0.5 m/s at the end: a = (0.5² - v₀²) / (2 * remaining_path)
-            target_final_velocity = 5  # m/s
-            if remaining_path > 0.1:  # Avoid division by zero
-                required_decel = (target_final_velocity**2 - current_velocity**2) / (2 * remaining_path)
-                # Limit to maximum braking capability
-                required_decel = max(required_decel, -2.0)  # Don't exceed -2.0 m/s² braking
-                
-                # Set target velocity based on physics-based deceleration
-                # v = sqrt(v₀² + 2as) where s is the distance traveled in prediction horizon
-                prediction_distance = min(2.0, remaining_path)  # Look ahead 2m or to end
-                target_velocity = max(0.5, np.sqrt(max(0, current_velocity**2 + 2 * required_decel * prediction_distance)))
-                
-                print(f"  🛑 End approach: remaining={remaining_path:.2f}m, current_v={current_velocity:.2f}m/s")
-                print(f"     Required decel={required_decel:.2f}m/s², target_v={target_velocity:.2f}m/s")
-            else:
-                target_velocity = 0.5
-        elif remaining_path < 10.0:
-            # Moderate slowdown when getting close
-            target_velocity = 3.0
-        else:
-            # Normal velocity
-            target_velocity = 5.0
+            
+        target_velocity = 5.0
             
         velocities = np.ones(mpc.N + 1) * target_velocity
         
