@@ -91,16 +91,17 @@ class MPCController:
 
         # Get CONTINUOUS dynamics with numerical parameter substitution
         # ACADOS expects continuous dynamics f(x,u) = dx/dt, not discrete
-        dynamics_expr = self.spline_dynamics.get_continuous_dynamics_with_substitution()
+        dynamics_expr = self.spline_dynamics.dynamics
         
         # Set model - ACADOS expects continuous dynamics, not discrete
         ocp.model.f_expl_expr = dynamics_expr
         ocp.model.x = x
         ocp.model.u = u
+        ocp.model.p = self.spline_dynamics.parameters
         ocp.model.name = 'spline_path_vehicle'
         
-        # Since we're using direct substitution approach, we don't need parameters in the OCP
-        ocp.dims.np = 0  # No parameters needed
+        ocp.dims.np = self.spline_dynamics.parameters.numel()
+        ocp.parameter_values = self.spline_dynamics.get_spline_parameters_vector()
         
         # Dimensions
         ocp.solver_options.N_horizon = self.N
@@ -196,6 +197,7 @@ class MPCController:
         # self.spline_dynamics.update_spline_parameters(self.solver)
     
     def solve(self, current_state: np.ndarray, 
+              parameters: np.ndarray,
               reference_trajectory: Dict) -> Dict:
         """
         Solve MPC optimization problem.
@@ -219,6 +221,8 @@ class MPCController:
             self.solver.set(i, "x", current_state)
         for i in range(self.N):
             self.solver.set(i, "u", np.zeros(2))
+        for i in range(self.N):
+            self.solver.set(i, "p", parameters)
         
         # Extract reference trajectory data
         # Handle both old 's_values' and new 'u_values' naming for backward compatibility

@@ -347,6 +347,9 @@ def run_simulation(path_type="curved"):
     inputs = np.zeros((n_steps, 2))
     solve_times = np.zeros(n_steps)  # Track MPC solve times
     states[0] = initial_state
+
+    # Get initial spline parameters vector
+    parameters = spline_dynamics.get_spline_parameters_vector()
     
     # Set initial guess for the solver
     for i in range(mpc.N + 1):
@@ -393,9 +396,10 @@ def run_simulation(path_type="curved"):
         if path_type not in ["racetrack", "challenging"]:
             # Get local waypoints
             local_waypoints = get_local_waypoints(global_waypoints, current_pos)
-            
             # Update spline parameters
             mpc.update_waypoints(local_waypoints)
+            # Update parameters after waypoints change
+            parameters = spline_dynamics.get_spline_parameters_vector()
         
         # Create reference trajectory that respects path bounds
         current_s = states[step][0]
@@ -432,7 +436,7 @@ def run_simulation(path_type="curved"):
         
         # Solve MPC problem with timing
         solve_start_time = time.perf_counter()
-        result = mpc.solve(states[step], reference_trajectory)
+        result = mpc.solve(states[step], parameters, reference_trajectory)
         solve_end_time = time.perf_counter()
         solve_times[step] = solve_end_time - solve_start_time
         
@@ -452,7 +456,7 @@ def run_simulation(path_type="curved"):
             print(f"  Current velocity: {states[step][4]:.2f} m/s, Current s: {states[step][0]:.2f} m")
         
         # Simulate one step
-        states[step + 1] = spline_dynamics.simulate_step(states[step], inputs[step], dt)
+        states[step + 1] = spline_dynamics.simulate_step(states[step], inputs[step], parameters, dt)
         
         # Update initial guess for next iteration
         for i in range(mpc.N):

@@ -243,38 +243,28 @@ class SplinePathDynamics(CurvilinearDynamics):
     
     def get_discrete_dynamics(self, dt: float) -> ca.Function:
         """
-        Get discrete-time spline path dynamics using RK4 integration.
-        
+        Get discrete-time spline path dynamics using RK4 integration (parametric in parameters).
         Args:
             dt: Time step for discretization
-            
         Returns:
-            CasADi function for discrete spline path dynamics
+            CasADi function for discrete spline path dynamics (parametric in parameters)
         """
-        # Check if we already have a cached function for this dt
         if dt == self._current_dt and dt in self._discrete_dynamics_cache:
             return self._discrete_dynamics_cache[dt]
+        # Use the symbolic expression for RK4
+        x = self.state
+        u = self.input
+        p = self.parameters
+        f = self.dynamics  # This is an SX expression
         
-        # Get dynamics with numerical parameter substitution
-        dynamics_substituted = self.get_continuous_dynamics_with_substitution()
-        
-        # Create new discrete dynamics function using RK4 integration
-        k1 = dynamics_substituted
-        k2 = ca.substitute(dynamics_substituted, self.state, self.state + dt/2 * k1)
-        k3 = ca.substitute(dynamics_substituted, self.state, self.state + dt/2 * k2)
-        k4 = ca.substitute(dynamics_substituted, self.state, self.state + dt * k3)
-        
-        state_next = self.state + dt/6 * (k1 + 2*k2 + 2*k3 + k4)
-        
-        # Create discrete dynamics function (no parameters needed since they're substituted)
-        discrete_dynamics = ca.Function('discrete_spline_path_dynamics',
-                                      [self.state, self.input],
-                                      [state_next])
-        
-        # Cache the function
+        k1 = ca.substitute([f], [x, u, p], [x, u, p])[0]
+        k2 = ca.substitute([f], [x, u, p], [x + dt/2 * k1, u, p])[0]
+        k3 = ca.substitute([f], [x, u, p], [x + dt/2 * k2, u, p])[0]
+        k4 = ca.substitute([f], [x, u, p], [x + dt * k3, u, p])[0]
+        x_next = x + dt/6 * (k1 + 2*k2 + 2*k3 + k4)
+        discrete_dynamics = ca.Function('discrete_spline_path_dynamics', [x, u, p], [x_next])
         self._discrete_dynamics_cache[dt] = discrete_dynamics
         self._current_dt = dt
-        
         return discrete_dynamics
     
     def get_continuous_dynamics(self) -> ca.Function:
@@ -538,23 +528,19 @@ class SplinePathDynamics(CurvilinearDynamics):
         return np.array([x, y, theta, v])
     
     def simulate_step(self, spline_curvilinear_state: np.ndarray, 
-                     input: np.ndarray, dt: float) -> np.ndarray:
+                     input: np.ndarray, parameters: np.ndarray, dt: float) -> np.ndarray:
         """
-        Simulate one step of spline path dynamics.
-        
+        Simulate one step of spline path dynamics (parametric in parameters).
         Args:
             spline_curvilinear_state: Current state [s, u, e_y, e_ψ, v]
             input: Control input [delta, a]
+            parameters: Spline parameter vector (knots, coeffs_x, coeffs_y)
             dt: Time step
-            
         Returns:
             Next spline curvilinear state
         """
-        # Simulate dynamics using symbolic functions
         discrete_dynamics = self.get_discrete_dynamics(dt)
-        # Call the function and convert result to numpy array
-        result = discrete_dynamics(spline_curvilinear_state, input)
-        # If result is a CasADi DM, use .full()
+        result = discrete_dynamics(spline_curvilinear_state, input, parameters)
         if hasattr(result, 'full'):
             return np.array(result.full()).flatten()
         return np.array(result).flatten()
@@ -572,3 +558,15 @@ class SplinePathDynamics(CurvilinearDynamics):
         constraints['u_max'] = self.spline_coords.u_values[-1]
         
         return constraints 
+    
+    def get_spline_parameters_vector(self) -> np.ndarray:
+        """
+        Return the concatenated spline parameter vector for dynamics functions.
+        Returns:
+            1D numpy array of all spline parameters (knots, coeffs_x, coeffs_y)
+        """
+        return np.concatenate([
+            self.knots_np,
+            self.coeffs_x_np.flatten('F'),
+            self.coeffs_y_np.flatten('F')
+        ]) 
