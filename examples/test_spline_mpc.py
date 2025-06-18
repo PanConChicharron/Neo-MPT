@@ -306,9 +306,9 @@ def run_simulation(path_type="curved"):
     )
     
     # Set cost weights (must be done before set_path)
-    state_weights = np.array([1.0, 0.0, 5.0, 0.5, 1.0])  # [s, u, e_y, e_ψ, v] - velocity weight = 0.0
-    input_weights = np.array([2, 2])  # [delta, a] - very low acceleration penalty
-    terminal_weights = np.array([2.0, 0.0, 10.0, 1.0, 1.0])  # [s, u, e_y, e_ψ, v] - terminal velocity weight = 0.0
+    state_weights = np.array([5.0, 0.0, 0.5, 0.1, 1.0])  # [s, u, e_y, e_ψ, v] - velocity weight = 0.0
+    input_weights = np.array([5, 10])  # [delta, a] - very low acceleration penalty
+    terminal_weights = 2* state_weights  # [s, u, e_y, e_ψ, v] - terminal velocity weight = 0.0
     
     mpc.set_weights(state_weights, input_weights, terminal_weights)
     mpc.set_path(spline_dynamics)
@@ -323,11 +323,8 @@ def run_simulation(path_type="curved"):
         initial_u,  # u: chord-length parameter
         0.0,        # e_y: on path
         0.0,        # e_ψ: aligned with path
-        10.0         # v: moderate initial velocity to 2 m/s
+        2.0         # v: moderate initial velocity to 2 m/s
     ])
-    
-    # Get initial position by evaluating spline at u=0.1 using numerical values
-    initial_pos = spline_dynamics.spline_coords.curvilinear_to_cartesian(initial_state[1], 0.0)
     
     # Print initial state
     print("\n=== DEBUG: Initial State ===")

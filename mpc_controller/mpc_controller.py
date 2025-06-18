@@ -159,15 +159,15 @@ class MPCController:
         ocp.constraints.lbx = np.array([
             0.0,                      # s: bounded by actual path length (arc-length)
             constraints['u_min'],     # u: bounded by chord-length parameter range
-            -5.0,                    # e_y: relaxed lateral error bounds
-            -np.pi/2,                   # e_ψ: heading error bounds
+            -1.0,                    # e_y: relaxed lateral error bounds
+            -np.pi/3,                   # e_ψ: heading error bounds
             constraints['velocity_min']  # v: velocity bounds
         ])
         ocp.constraints.ubx = np.array([
             path_length,              # s: bounded by actual path length (arc-length)
             constraints['u_max'],     # u: bounded by chord-length parameter range
-            5.0,                     # e_y: relaxed lateral error bounds
-            np.pi/2,                    # e_ψ: heading error bounds
+            1.0,                     # e_y: relaxed lateral error bounds
+            np.pi/3,                    # e_ψ: heading error bounds
             constraints['velocity_max']  # v: velocity bounds
         ])
         ocp.constraints.idxbx = np.array([0, 1, 2, 3, 4])  # indices of all states
