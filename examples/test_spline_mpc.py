@@ -276,7 +276,7 @@ def run_simulation(path_type="curved"):
     
     # Create spline path with chord-length parameterization
     spline_fitter = SplineFitter()
-    spline = spline_fitter.fit_spline(waypoints)
+    spline_fitter.fit_spline(waypoints)
     
     # Debug plot spline and derivatives
     # plot_spline_debug(spline)
