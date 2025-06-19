@@ -446,19 +446,6 @@ def run_simulation(path_type="curved"):
         # Simulate one step
         states[step + 1] = spline_dynamics.simulate_step(states[step], inputs[step], parameters, dt)
         
-        # Update initial guess for next iteration
-        for i in range(mpc.N):
-            if i < mpc.N - 1:
-                mpc.solver.set(i, "x", result['predicted_trajectory'][i + 1])
-                mpc.solver.set(i, "u", result['optimal_sequence'][i + 1])
-            else:
-                # For the last step, use the terminal state
-                mpc.solver.set(i, "x", result['predicted_trajectory'][-1])
-                mpc.solver.set(i, "u", result['optimal_sequence'][-1])
-        
-        # Set terminal state guess
-        mpc.solver.set(mpc.N, "x", result['predicted_trajectory'][-1])
-    
     # Print timing statistics
     actual_steps = len([t for t in solve_times if t > 0])  # Count non-zero solve times
     if actual_steps > 0:

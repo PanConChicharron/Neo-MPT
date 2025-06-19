@@ -287,14 +287,30 @@ class MPCController:
         # Get terminal state
         x_terminal = self.solver.get(self.N, "x")
         predicted_states.append(x_terminal)
-        
-        return {
+
+        result = {
             'optimal_input': optimal_inputs[0],  # First control input
             'optimal_sequence': np.array(optimal_inputs),
             'predicted_trajectory': np.array(predicted_states),
             'solver_status': status,
             'cost': self.solver.get_cost()
         }
+
+        if result['solver_status'] != 0:
+            for i in range(self.N):
+                if i < self.N - 1:
+                    self.solver.set(i, "x", result['predicted_trajectory'][i + 1])
+                    self.solver.set(i, "u", result['optimal_sequence'][i + 1])
+                else:
+                    # For the last step, use the terminal state
+                    self.solver.set(i, "x", result['predicted_trajectory'][-1])
+                    self.solver.set(i, "u", result['optimal_sequence'][-1])
+            
+            # Set terminal state guess
+            self.solver.set(self.N, "x", result['predicted_trajectory'][-1])
+    
+        
+        return result
     
     def _set_reference(self, reference_trajectory: Dict):
         """Set reference trajectory for the optimization problem."""
