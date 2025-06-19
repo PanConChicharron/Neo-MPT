@@ -351,12 +351,6 @@ def run_simulation(path_type="curved"):
     # Get initial spline parameters vector
     parameters = spline_dynamics.get_spline_parameters_vector()
     
-    # Set initial guess for the solver
-    for i in range(mpc.N + 1):
-        mpc.solver.set(i, "x", initial_state)
-    for i in range(mpc.N):
-        mpc.solver.set(i, "u", np.zeros(2))
-    
     # Main simulation loop
     for step in range(n_steps):
         print(f"\nStep {step + 1}/{n_steps}")
@@ -410,13 +404,7 @@ def run_simulation(path_type="curved"):
 
         lookahead_distance = 25.0
         
-        # Set reference horizon based on remaining path
-        if remaining_path > lookahead_distance:
-            # Normal case: look ahead 4.0 meters
-            s_end = current_s + lookahead_distance
-        else:
-            # Near end of path: just go to the end and maintain that position
-            s_end = path_length
+        s_end = min(current_s + lookahead_distance, path_length)
         
         s_values = np.linspace(current_s, s_end, mpc.N + 1)
             
