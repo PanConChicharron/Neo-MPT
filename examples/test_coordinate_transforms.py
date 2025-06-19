@@ -5,10 +5,10 @@ import os
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from spline_fit.spline_fitter import SplineFitter
-from mpc_controller.spline_path_dynamics import SplinePathDynamics
-from mpc_controller.vehicle_model import VehicleModel
-from spline_fit.curvilinear_coordinates import CurvilinearCoordinates
+from Spline.spline_fitter import SplineFitter
+from Dynamics.spline_path_dynamics import SplinePathDynamics
+from Dynamics.vehicle_model import VehicleModel
+from CoordinateSystem.curvilinear_coordinates import CurvilinearCoordinates
 
 
 def test_coordinate_transforms():

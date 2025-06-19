@@ -1,7 +1,6 @@
 import numpy as np
 from typing import Union, Tuple, Optional
-from .chord_length_parametric_spline_2d import ChordLengthParametricSpline2D
-from .spline_fitter import SplineFitter
+from Spline.chord_length_parametric_spline_2d import ChordLengthParametricSpline2D
 
 
 class CurvilinearCoordinates(ChordLengthParametricSpline2D):

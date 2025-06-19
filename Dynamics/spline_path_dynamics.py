@@ -1,8 +1,8 @@
 import numpy as np
 import casadi as ca
 from typing import Dict, Optional, Callable, Tuple
-from .curvilinear_dynamics import CurvilinearDynamics
-from spline_fit.curvilinear_coordinates import CurvilinearCoordinates
+from Dynamics.curvilinear_dynamics import CurvilinearDynamics
+from CoordinateSystem.curvilinear_coordinates import CurvilinearCoordinates
 
 
 class SplinePathDynamics(CurvilinearDynamics):
@@ -443,4 +443,26 @@ class SplinePathDynamics(CurvilinearDynamics):
             self.knots_np,
             self.coeffs_x_np.flatten('F'),
             self.coeffs_y_np.flatten('F')
-        ]) 
+        ])
+    
+    def update_waypoints(self, waypoints: np.ndarray):
+        """
+        Update the spline with new waypoints.
+        
+        Args:
+            waypoints: Array of shape (N, 2) containing [x, y] coordinates
+        """
+        # Create new CurvilinearCoordinates with the new waypoints
+        self.spline_coords = CurvilinearCoordinates(waypoints)
+        
+        # Re-extract spline coefficients
+        self._extract_spline_coefficients()
+        
+        # Re-create symbolic spline functions
+        self._create_symbolic_spline_functions()
+        
+        # Re-create symbolic model
+        self._create_spline_symbolic_model()
+        
+        # Clear dynamics cache since the model has changed
+        self.clear_dynamics_cache() 

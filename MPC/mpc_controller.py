@@ -2,8 +2,8 @@ import numpy as np
 import casadi as ca
 from acados_template import AcadosOcp, AcadosOcpSolver
 from typing import Dict, Optional, Tuple
-from .vehicle_model import VehicleModel
-from .spline_path_dynamics import SplinePathDynamics
+from Dynamics.vehicle_model import VehicleModel
+from Dynamics.spline_path_dynamics import SplinePathDynamics
 
 
 class MPCController:

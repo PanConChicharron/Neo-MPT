@@ -198,4 +198,23 @@ class CubicSpline:
         if len(t) == 1:
             return valid[0]
         else:
-            return valid 
+            return valid
+    
+    def extract_sub_spline(self, t_start: float, t_end: float, num_samples: int = 20) -> 'CubicSpline':
+        """
+        Extract a sub-spline from the existing spline by sampling points in the specified parameter range and creating a new CubicSpline object.
+        
+        Args:
+            t_start: Starting parameter value
+            t_end: Ending parameter value
+            num_samples: Number of points to sample for the sub-spline
+        Returns:
+            New CubicSpline object representing the sub-spline
+        """
+        t_start = max(self.t_min, min(t_start, self.t_max))
+        t_end = max(self.t_min, min(t_end, self.t_max))
+        if t_start >= t_end:
+            raise ValueError("t_start must be less than t_end")
+        t_samples = np.linspace(t_start, t_end, num_samples)
+        points_samples = self.evaluate(t_samples)
+        return CubicSpline(t_samples, points_samples, bc_type=self.bc_type) 

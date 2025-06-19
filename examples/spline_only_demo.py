@@ -14,9 +14,9 @@ import os
 # Add parent directory to path to import modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from spline_fit.cubic_spline import CubicSpline
-from spline_fit.chord_length_parametric_spline_2d import ChordLengthParametricSpline2D
-from spline_fit.curvilinear_coordinates import CurvilinearCoordinates
+from Spline.cubic_spline import CubicSpline
+from Spline.chord_length_parametric_spline_2d import ChordLengthParametricSpline2D
+from CoordinateSystem.curvilinear_coordinates import CurvilinearCoordinates
 
 
 def main():

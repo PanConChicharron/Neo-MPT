@@ -7,10 +7,10 @@ import time
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from mpc_controller.mpc_controller import MPCController
-from mpc_controller.vehicle_model import VehicleModel
-from mpc_controller.spline_path_dynamics import SplinePathDynamics
-from spline_fit.curvilinear_coordinates import CurvilinearCoordinates
+from MPC.mpc_controller import MPCController
+from Dynamics.vehicle_model import VehicleModel
+from Dynamics.spline_path_dynamics import SplinePathDynamics
+from CoordinateSystem.curvilinear_coordinates import CurvilinearCoordinates
 
 def create_test_path():
     """Create a test path with waypoints."""

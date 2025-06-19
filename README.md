@@ -25,7 +25,7 @@ Note: For acados installation, please follow the official acados installation gu
 ## Usage
 
 ```python
-from spline_fit import ChordLengthParametricSpline2D
+from Spline import ChordLengthParametricSpline2D
 from mpc_controller import MPCController
 import numpy as np
 
