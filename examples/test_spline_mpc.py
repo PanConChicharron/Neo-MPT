@@ -11,7 +11,6 @@ from mpc_controller.mpc_controller import MPCController
 from mpc_controller.vehicle_model import VehicleModel
 from mpc_controller.spline_path_dynamics import SplinePathDynamics
 from spline_fit.curvilinear_coordinates import CurvilinearCoordinates
-from spline_fit.spline_fitter import SplineFitter
 
 def create_test_path():
     """Create a test path with waypoints."""
@@ -200,61 +199,6 @@ def get_local_waypoints(global_waypoints, current_position, horizon=15):
     
     return local_waypoints
 
-def plot_spline_debug(spline_fitter):
-    """Plot spline and its derivatives for debugging."""
-    # Create fine grid of s values
-    s_fine = np.linspace(0, spline_fitter.path_length, 1000)
-    
-    # Evaluate spline and derivatives
-    positions = np.array([spline_fitter.evaluate(s) for s in s_fine])
-    tangents = np.array([spline_fitter.evaluate_derivatives(s) for s in s_fine])
-    second_derivs = np.array([spline_fitter.evaluate_second_derivatives(s) for s in s_fine])
-    curvatures = np.array([spline_fitter.compute_curvature(s) for s in s_fine])
-    
-    # Create figure with subplots
-    fig, axs = plt.subplots(2, 2, figsize=(15, 10))
-    
-    # Plot 1: Spline path
-    axs[0, 0].plot(positions[:, 0], positions[:, 1], 'b-', label='Spline')
-    # Add tangent vectors
-    for i in range(0, len(s_fine), 50):
-        pos = positions[i]
-        tan = tangents[i]
-        tan_norm = tan / np.linalg.norm(tan) * 0.5
-        axs[0, 0].arrow(pos[0], pos[1], tan_norm[0], tan_norm[1], 
-                       head_width=0.2, head_length=0.3, fc='red', ec='red')
-    axs[0, 0].set_title('Spline Path with Tangent Vectors')
-    axs[0, 0].set_xlabel('X [m]')
-    axs[0, 0].set_ylabel('Y [m]')
-    axs[0, 0].grid(True)
-    axs[0, 0].axis('equal')
-    
-    # Plot 2: Tangent magnitude
-    tangent_mags = np.linalg.norm(tangents, axis=1)
-    axs[0, 1].plot(s_fine, tangent_mags, 'r-')
-    axs[0, 1].set_title('Tangent Vector Magnitude |dx/ds|')
-    axs[0, 1].set_xlabel('s [m]')
-    axs[0, 1].set_ylabel('|dx/ds|')
-    axs[0, 1].grid(True)
-    
-    # Plot 3: Second derivative magnitude
-    second_deriv_mags = np.linalg.norm(second_derivs, axis=1)
-    axs[1, 0].plot(s_fine, second_deriv_mags, 'g-')
-    axs[1, 0].set_title('Second Derivative Magnitude |d²x/ds²|')
-    axs[1, 0].set_xlabel('s [m]')
-    axs[1, 0].set_ylabel('|d²x/ds²|')
-    axs[1, 0].grid(True)
-    
-    # Plot 4: Curvature
-    axs[1, 1].plot(s_fine, curvatures, 'purple')
-    axs[1, 1].set_title('Curvature κ')
-    axs[1, 1].set_xlabel('s [m]')
-    axs[1, 1].set_ylabel('κ [1/m]')
-    axs[1, 1].grid(True)
-    
-    plt.tight_layout()
-    plt.show()
-
 def run_simulation(path_type="curved"):
     # Create test path based on type
     if path_type == "straight":
@@ -273,10 +217,6 @@ def run_simulation(path_type="curved"):
         raise ValueError("Invalid path type. Use 'straight', 'curved', 'racetrack', 'challenging', or 'both'.")
         
     global_waypoints = waypoints  # Store global waypoints
-    
-    # Create spline path with chord-length parameterization
-    spline_fitter = SplineFitter()
-    spline_fitter.fit_spline(waypoints)
     
     # Debug plot spline and derivatives
     # plot_spline_debug(spline)
@@ -308,7 +248,7 @@ def run_simulation(path_type="curved"):
     # Set cost weights (must be done before set_path)
     state_weights = np.array([1e0, 0.0, 1e2, 1e-1, 1e-1])  # [s, u, e_y, e_ψ, v] - velocity weight = 0.0
     input_weights = np.array([5, 10])  # [delta, a] - very low acceleration penalty
-    terminal_weights = 2* state_weights  # [s, u, e_y, e_ψ, v] - terminal velocity weight = 0.0
+    terminal_weights = 2 * state_weights  # [s, u, e_y, e_ψ, v] - terminal velocity weight = 0.0
     
     mpc.set_weights(state_weights, input_weights, terminal_weights)
     mpc.set_path(spline_dynamics)
@@ -395,21 +335,11 @@ def run_simulation(path_type="curved"):
             # Update parameters after waypoints change
             parameters = spline_dynamics.get_spline_parameters_vector()
         
-        # Create reference trajectory that respects path bounds
-        current_s = states[step][0]
-        path_length = spline_dynamics.spline_coords.path_length
-        
-        # Calculate how much path is remaining
-        remaining_path = path_length - current_s
-
         lookahead_distance = 25.0
-        
         s_end = min(current_s + lookahead_distance, path_length)
-        
         s_values = np.linspace(current_s, s_end, mpc.N + 1)
             
         target_velocity = 5.0
-            
         velocities = np.ones(mpc.N + 1) * target_velocity
         
         reference_trajectory = {
@@ -539,8 +469,6 @@ def plot_results_with_timing(states, inputs, solve_times, dt, spline_dynamics):
     # Plot states
     axs[0, 1].set_title('States')
     axs[0, 1].plot(t, states[:, 0], label='s (progress)')
-    axs[0, 1].plot(t, states[:, 2], label='e_y (lateral error)')
-    axs[0, 1].plot(t, states[:, 3], label='e_ψ (heading error)')
     axs[0, 1].legend()
     axs[0, 1].grid(True)
     
