@@ -84,17 +84,18 @@ class SplinePathDynamics(CurvilinearDynamics):
         n_coeffs_y = self.coeffs_y.shape[0] * self.coeffs_y.shape[1]  # 4 * n_segments
         total_params = n_knots + n_coeffs_x + n_coeffs_y
         
-        # Single parameter vector: [knots, coeffs_x_flat, coeffs_y_flat]
-        params = ca.SX.sym('params', total_params)
-        
         # Extract parameters from the flattened vector
-        knots_from_params = params[:n_knots]
-        coeffs_x_flat = params[n_knots:n_knots + n_coeffs_x]
-        coeffs_y_flat = params[n_knots + n_coeffs_x:n_knots + n_coeffs_x + n_coeffs_y]
-        
-        # Reshape coefficients back to matrix form (4 x n_segments)
-        coeffs_x_from_params = ca.reshape(coeffs_x_flat, self.coeffs_x.shape[0], self.coeffs_x.shape[1])
-        coeffs_y_from_params = ca.reshape(coeffs_y_flat, self.coeffs_y.shape[0], self.coeffs_y.shape[1])
+        knots = ca.SX.sym('knots', n_knots)
+        coeffs_x = ca.SX.sym('coeffs_x', self.coeffs_x.shape[0], self.coeffs_x.shape[1])
+        coeffs_y = ca.SX.sym('coeffs_y', self.coeffs_y.shape[0], self.coeffs_y.shape[1])
+
+        # Single parameter vector: [knots, coeffs_x_flat, coeffs_y_flat]
+        # Flatten coefficient matrices column-wise
+        coeffs_x_flat = ca.reshape(coeffs_x, -1, 1)
+        coeffs_y_flat = ca.reshape(coeffs_y, -1, 1)
+
+        # Concatenate all into a single parameter vector
+        params = ca.vertcat(knots, coeffs_x_flat, coeffs_y_flat)
         
         # Initialize outputs
         x_val = ca.SX.zeros(1)
@@ -109,20 +110,20 @@ class SplinePathDynamics(CurvilinearDynamics):
             # Condition: knots[i] <= u < knots[i+1] (or u <= knots[i+1] for last segment)
             if i == 0:
                 # For first segment, include u = knots[0]
-                condition = ca.logic_and(u >= knots_from_params[i], u < knots_from_params[i+1])
+                condition = ca.logic_and(u >= knots[i], u < knots[i+1])
             elif i == self.n_segments - 1:
                 # For last segment, include u = knots[-1]
-                condition = ca.logic_and(u >= knots_from_params[i], u <= knots_from_params[i+1])
+                condition = ca.logic_and(u >= knots[i], u <= knots[i+1])
             else:
-                condition = ca.logic_and(u >= knots_from_params[i], u < knots_from_params[i+1])
+                condition = ca.logic_and(u >= knots[i], u < knots[i+1])
             
             # Local parameter within segment
-            t = u - knots_from_params[i]
+            t = u - knots[i]
             
             # Cubic polynomial: f(t) = a*t^3 + b*t^2 + c*t + d
             # Note: scipy stores coefficients in reverse order [d, c, b, a]
-            d_x, c_x, b_x, a_x = coeffs_x_from_params[0,i], coeffs_x_from_params[1,i], coeffs_x_from_params[2,i], coeffs_x_from_params[3,i]
-            d_y, c_y, b_y, a_y = coeffs_y_from_params[0,i], coeffs_y_from_params[1,i], coeffs_y_from_params[2,i], coeffs_y_from_params[3,i]
+            d_x, c_x, b_x, a_x = coeffs_x[0,i], coeffs_x[1,i], coeffs_x[2,i], coeffs_x[3,i]
+            d_y, c_y, b_y, a_y = coeffs_y[0,i], coeffs_y[1,i], coeffs_y[2,i], coeffs_y[3,i]
             
             # Position
             x_seg = a_x*t**3 + b_x*t**2 + c_x*t + d_x
