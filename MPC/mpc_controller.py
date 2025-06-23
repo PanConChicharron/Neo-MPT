@@ -3,7 +3,7 @@ import casadi as ca
 from acados_template import AcadosOcp, AcadosOcpSolver
 from typing import Dict, Optional, Tuple
 from Dynamics.vehicle_model import VehicleModel
-from Dynamics.spline_path_dynamics import SplinePathDynamics
+from Dynamics.spline_path_dynamics import CubicSplinePathDynamics
 
 
 class MPCController:
@@ -14,7 +14,10 @@ class MPCController:
     with costs on heading error, cross-track error, and progress towards goal.
     """
     
-    def __init__(self, vehicle_model: VehicleModel, 
+    def __init__(self,
+                 vehicle_model: VehicleModel, 
+                 state_weights: np.ndarray, input_weights: np.ndarray, 
+                 terminal_state_weights: np.ndarray,
                  prediction_horizon: float = 2.0, 
                  dt: float = 0.1):
         """
@@ -32,17 +35,16 @@ class MPCController:
         
         # Initialize spline path dynamics
         self.spline_dynamics = None  # Will be set when path is provided
-        
-        # Default cost function weights - can be overridden
-        self.state_weights = np.array([1.0, 0.1, 20.0, 8.0, 0.0])  # [s, u, e_y, e_ψ, v]
-        self.input_weights = np.array([0.1, 0.1])  # [delta, a]
-        self.terminal_state_weights = np.array([2.0, 0.1, 40.0, 15.0, 0.0])  # [s, u, e_y, e_ψ, v]
+
+        self.state_weights = state_weights
+        self.input_weights = input_weights
+        self.terminal_state_weights = terminal_state_weights
         
         # Initialize solver
         self.solver = None
         self.total_path_length = None
     
-    def set_path(self, spline_dynamics: SplinePathDynamics):
+    def set_path(self, spline_dynamics: CubicSplinePathDynamics):
         """
         Set the spline path for tracking.
         
@@ -231,30 +233,17 @@ class MPCController:
         
         # Set reference for each node in the horizon (excluding terminal node)
         for i in range(self.N):  # Only go to N-1, not N+1
-            if i < len(trajectory_params):
-                # Set reference state + input: [s, u, e_y, e_ψ, v, delta, a]
-                yref_vector = np.array([
-                    trajectory_params[i],  # s (arc-length progress)
-                    trajectory_params[i],  # u (chord-length parameter) - approximation
-                    0.0,                   # e_y (lateral error)
-                    0.0,                   # e_ψ (heading error)
-                    velocities[i] if i < len(velocities) else 10.0,  # v (velocity)
-                    0.0,                   # delta (steering reference)
-                    0.0                    # a (acceleration reference)
-                ])
-                self.solver.set(i, "yref", yref_vector)
-            else:
-                # Use final values for remaining nodes
-                yref_vector = np.array([
-                    trajectory_params[-1] if len(trajectory_params) > 0 else 0.0,
-                    trajectory_params[-1] if len(trajectory_params) > 0 else 0.0,
-                    0.0,
-                    0.0,
-                    velocities[-1] if len(velocities) > 0 else 10.0,
-                    0.0,                   # delta (steering reference)
-                    0.0                    # a (acceleration reference)
-                ])
-                self.solver.set(i, "yref", yref_vector)
+            # Set reference state + input: [s, u, e_y, e_ψ, v, delta, a]
+            yref_vector = np.array([
+                trajectory_params[i],  # s (arc-length progress)
+                trajectory_params[i],  # u (chord-length parameter) - approximation
+                0.0,                   # e_y (lateral error)
+                0.0,                   # e_ψ (heading error)
+                velocities[i] if i < len(velocities) else 10.0,  # v (velocity)
+                0.0,                   # delta (steering reference)
+                0.0                    # a (acceleration reference)
+            ])
+            self.solver.set(i, "yref", yref_vector)
         
         # Set terminal reference (only for node N)
         if len(trajectory_params) > 0:
@@ -312,51 +301,7 @@ class MPCController:
         
         return result
     
-    def _set_reference(self, reference_trajectory: Dict):
-        """Set reference trajectory for the optimization problem."""
-        # This method is now handled inline in the solve method
-        pass
-    
     def update_waypoints(self, waypoints: np.ndarray):
-        """Update waypoints and recompute spline parameters."""
-        if self.spline_dynamics is None:
-            raise RuntimeError("Spline path must be set before updating waypoints")
-        
+        """Update waypoints and recompute spline parameters."""        
         # Update spline parameters
         self.spline_dynamics.update_waypoints(waypoints)
-        
-        # No longer need to update parameters in solver since we use direct substitution
-        # self.spline_dynamics.update_spline_parameters(self.solver)
-    
-    def set_weights(self, state_weights: np.ndarray, input_weights: np.ndarray, 
-                   terminal_state_weights: Optional[np.ndarray] = None):
-        """
-        Update cost function weights. Must be called before set_path().
-        
-        Args:
-            state_weights: State weights [s, u, e_y, e_ψ, v]
-            input_weights: Input weights [delta, a]  
-            terminal_state_weights: Terminal state weights (optional)
-        """
-        if self.solver is not None:
-            raise RuntimeError("Weights must be set before calling set_path(). Recreate the MPC controller to change weights.")
-        
-        self.state_weights = state_weights
-        self.input_weights = input_weights
-        if terminal_state_weights is not None:
-            self.terminal_state_weights = terminal_state_weights
-        else:
-            self.terminal_state_weights = 2 * state_weights
-    
-    def get_prediction_horizon(self) -> float:
-        """Get prediction horizon in seconds."""
-        return self.prediction_horizon
-    
-    def get_time_step(self) -> float:
-        """Get time step."""
-        return self.dt 
-
-    # Remove the update_spline_parameters method since we no longer use parameters
-    # def update_spline_parameters(self, solver):
-    #     """Update spline parameters in the acados solver."""
-    #     # This method is no longer needed with direct substitution approach 

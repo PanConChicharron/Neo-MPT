@@ -1,9 +1,9 @@
 import numpy as np
 import casadi as ca
 from Spline.spline_fitter import SplineFitter
-from Dynamics.spline_path_dynamics import SplinePathDynamics
+from Dynamics.spline_path_dynamics import CubicSplinePathDynamics
 from Dynamics.vehicle_model import VehicleModel
-from CoordinateSystem.curvilinear_coordinates import CurvilinearCoordinates
+from CoordinateSystem.curvilinear_spline import CurvilinearCoordinates
 
 def test_spline_consistency():
     """Test consistency between SplineFitter and CasADi spline implementations."""
@@ -27,7 +27,7 @@ def test_spline_consistency():
     
     # Create dummy vehicle model and spline dynamics for CasADi
     vehicle_model = VehicleModel()
-    spline_dynamics = SplinePathDynamics(vehicle_model, spline_coords)
+    spline_dynamics = CubicSplinePathDynamics(vehicle_model, spline_coords)
     
     # Debug s=0 case
     print("\nDEBUG: s=0 case:")

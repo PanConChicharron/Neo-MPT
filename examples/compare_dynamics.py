@@ -9,8 +9,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from Spline.spline_fitter import SplineFitter
 from MPC.spline_path_dynamics import SplinePathDynamics
 from Dynamics.vehicle_model import VehicleModel
-from CoordinateSystem.curvilinear_coordinates import CurvilinearCoordinates
-from Dynamics.spline_path_dynamics import SplinePathDynamics
+from CoordinateSystem.spline_curvilinear_path import SplineCurvilinearPath
+from Dynamics.spline_path_dynamics import CubicSplinePathDynamics
 
 
 def create_test_path():
@@ -62,7 +62,7 @@ def compare_dynamics():
 
         # Create vehicle model and spline dynamics
         vehicle_model = VehicleModel()
-        spline_dynamics = SplinePathDynamics(vehicle_model, spline_coords)
+        spline_dynamics = CubicSplinePathDynamics(vehicle_model, spline_coords)
 
         # Test parameters
         dt = 0.1

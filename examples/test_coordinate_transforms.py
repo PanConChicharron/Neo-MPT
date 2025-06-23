@@ -6,9 +6,9 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from Spline.spline_fitter import SplineFitter
-from Dynamics.spline_path_dynamics import SplinePathDynamics
+from Dynamics.spline_path_dynamics import CubicSplinePathDynamics
 from Dynamics.vehicle_model import VehicleModel
-from CoordinateSystem.curvilinear_coordinates import CurvilinearCoordinates
+from CoordinateSystem.spline_curvilinear_coordinates import CurvilinearCoordinates
 
 
 def test_coordinate_transforms():
@@ -35,7 +35,7 @@ def test_coordinate_transforms():
 
     # Create vehicle model and spline dynamics
     vehicle_model = VehicleModel()
-    spline_dynamics = SplinePathDynamics(vehicle_model, spline_coords)
+    spline_dynamics = CubicSplinePathDynamics(vehicle_model, spline_coords)
     
     print(f"\nSpline parameter range: {spline_coords.u_values[0]} to {spline_coords.u_values[-1]}")
     print(f"Path length: {spline_coords.path_length}")

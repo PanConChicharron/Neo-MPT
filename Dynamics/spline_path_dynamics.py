@@ -1,11 +1,11 @@
 import numpy as np
 import casadi as ca
-from typing import Dict, Optional, Callable, Tuple
+from typing import Dict
 from Dynamics.curvilinear_dynamics import CurvilinearDynamics
-from CoordinateSystem.curvilinear_coordinates import CurvilinearCoordinates
+from CoordinateSystem.spline_curvilinear_path import SplineCurvilinearPath
 
 
-class SplinePathDynamics(CurvilinearDynamics):
+class CubicSplinePathDynamics(CurvilinearDynamics):
     """
     Extended curvilinear dynamics for chord-length parameterized splines.
     
@@ -23,7 +23,7 @@ class SplinePathDynamics(CurvilinearDynamics):
     Uses fully symbolic spline representation for complete differentiability.
     """
     
-    def __init__(self, vehicle_model, spline_coords: CurvilinearCoordinates):
+    def __init__(self, vehicle_model, num_waypoints: int, spline_coords: SplineCurvilinearPath):
         """
         Initialize spline path dynamics.
         
@@ -32,6 +32,8 @@ class SplinePathDynamics(CurvilinearDynamics):
             spline_coords: CurvilinearCoordinates object with chord-length parameterization
         """
         super().__init__(vehicle_model)
+        self.num_waypoints = num_waypoints
+        self.n_segments = self.num_waypoints - 1
         self.spline_coords = spline_coords
         self.n_states = 5  # [s, u, e_y, e_ψ, v]
         
@@ -56,7 +58,6 @@ class SplinePathDynamics(CurvilinearDynamics):
         
         # Extract knot points and coefficients
         self.knots = spline_x.x  # Parameter values (same for both x and y)
-        self.n_segments = len(self.knots) - 1
         
         # Coefficients for each segment: [a, b, c, d] where spline = a*t^3 + b*t^2 + c*t + d
         # scipy stores coefficients in reverse order: [d, c, b, a]
@@ -64,9 +65,9 @@ class SplinePathDynamics(CurvilinearDynamics):
         self.coeffs_y = np.flip(spline_y.c, axis=0)  # Shape: (4, n_segments)
         
         # Store as CasADi parameters for symbolic computation
-        self.knots_ca = ca.SX.sym('knots', self.knots.shape[0])
-        self.coeffs_x_ca = ca.SX.sym('coeffs_x', self.coeffs_x.shape[0], self.coeffs_x.shape[1])
-        self.coeffs_y_ca = ca.SX.sym('coeffs_y', self.coeffs_y.shape[0], self.coeffs_y.shape[1])
+        self.knots_ca = ca.SX.sym('knots', self.num_waypoints)
+        self.coeffs_x_ca = ca.SX.sym('coeffs_x', 4, self.n_segments)
+        self.coeffs_y_ca = ca.SX.sym('coeffs_y', 4, self.n_segments)
         
         # Store numerical values for parameter updates
         self.knots_np = self.knots
@@ -454,7 +455,7 @@ class SplinePathDynamics(CurvilinearDynamics):
             waypoints: Array of shape (N, 2) containing [x, y] coordinates
         """
         # Create new CurvilinearCoordinates with the new waypoints
-        self.spline_coords = CurvilinearCoordinates(waypoints)
+        self.spline_coords = SplineCurvilinearPath(waypoints)
         
         # Re-extract spline coefficients
         self._extract_spline_coefficients()

@@ -24,7 +24,7 @@ class ChordLengthParametricSpline2D:
     The actual path length is computed using RK4 integration for accurate arc length.
     """
     
-    def __init__(self, waypoints: np.ndarray, closed_path: bool = False):
+    def __init__(self, num_waypoints: int, closed_path: bool = False):
         """
         Initialize the chord-length parameterized spline with waypoints.
         
@@ -32,14 +32,22 @@ class ChordLengthParametricSpline2D:
             waypoints: Array of shape (N, 2) containing [x, y] coordinates
             closed_path: Whether the path should be closed (connect last to first point)
         """
-        self.waypoints = np.array(waypoints)
         self.closed_path = closed_path
         self.spline = None
         self.path_length = None
         self.u_values = None  # Chord-length parameters
         
-        if self.waypoints.shape[1] != 2:
+    def set_waypoints(self, waypoints: np.ndarray):
+        """
+        Set the waypoints for the spline.
+        
+        Args:
+            waypoints: Array of shape (N, 2) containing [x, y] coordinates
+        """        
+        if waypoints.shape[1] != 2:
             raise ValueError("Waypoints must be of shape (N, 2) for [x, y] coordinates")
+        
+        self.waypoints = waypoints
         
         self._parameterize_waypoints()
         self._create_spline()
@@ -137,7 +145,7 @@ class ChordLengthParametricSpline2D:
             'path_length': self.path_length
         }
     
-    def get_closest_point(self, query_point: np.ndarray, num_samples: int = 100) -> Tuple[float, np.ndarray]:
+    def get_closest_point(self, query_point: np.ndarray) -> Tuple[float, np.ndarray]:
         """
         Find the closest point on the spline to a given query point using Newton's method.
         
@@ -227,8 +235,8 @@ class ChordLengthParametricSpline2D:
         """Get original waypoints."""
         return self.waypoints.copy()
     
-    def get_parameter_values(self) -> np.ndarray:
-        """Get chord-length parameter values."""
+    def get_knots(self) -> np.ndarray:
+        """Get cubic spline parameter values."""
         return self.u_values.copy()
     
     def plot_spline(self, num_points: int = 200, show_waypoints: bool = True, 
@@ -310,7 +318,7 @@ class ChordLengthParametricSpline2D:
         else:
             return np.arctan2(derivatives[:, 1], derivatives[:, 0])
     
-    def generate_trajectory_at_parameters(self, u_values: np.ndarray) -> dict:
+    def generate_trajectory_at(self, u_values: np.ndarray) -> dict:
         """
         Generate trajectory at specific chord-length parameter values.
         

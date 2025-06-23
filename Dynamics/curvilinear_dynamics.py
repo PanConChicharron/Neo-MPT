@@ -1,6 +1,6 @@
 import numpy as np
 import casadi as ca
-from typing import Dict, Optional, Callable
+from typing import Dict
 from .vehicle_model import VehicleModel
 
 

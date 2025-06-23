@@ -9,195 +9,15 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from MPC.mpc_controller import MPCController
 from Dynamics.vehicle_model import VehicleModel
-from Dynamics.spline_path_dynamics import SplinePathDynamics
-from CoordinateSystem.curvilinear_coordinates import CurvilinearCoordinates
-
-def create_test_path():
-    """Create a test path with waypoints."""
-    # Create a simple path with clear progression
-    waypoints = np.array([
-        [0, 0],
-        [5, 2],
-        [10, 3],
-        [15, 1],
-        [20, -2],
-        [25, 0],
-        [30, 3]
-    ])
-    return waypoints
-
-def create_straight_line_path():
-    """Create a simple straight-line test path for debugging boundary behavior."""
-    # Create a straight line path - this should have ds/du = 1.0 everywhere
-    waypoints = np.array([
-        [0, 0],
-        [5, 0],
-        [10, 0],
-        [15, 0],
-        [20, 0],
-        [25, 0],
-        [30, 0]
-    ])
-    return waypoints
-
-def create_racetrack_path():
-    #faulty
-    """Create a race-track style pseudo-ellipse path with straight sections and curved ends."""
-    # Race-track style pseudo-ellipse waypoints
-    # Creates an oval with straight sections and curved ends
-    waypoints = np.array([
-        # Bottom straight section (start)
-        [0, 0],
-        [5, 0],
-        [10, 0],
-        [15, 0],
-        [20, 0],
-        
-        # Right curved section (turn 1)
-        [25, 2],
-        [28, 5],
-        [30, 8],
-        [30, 12],
-        
-        # Top straight section
-        [28, 15],
-        [25, 16],
-        [20, 16],
-        [15, 16],
-        [10, 16],
-        [5, 16],
-        [0, 16],
-        
-        # Left curved section (turn 2)
-        [-3, 14],
-        [-5, 10],
-        [-5, 6],
-        [-3, 2],
-        
-        # Return to start
-        [0, 0]
-    ])
-    return waypoints
-
-def create_challenging_track():
-    """Create a longer, more challenging race track with multiple complex turns."""
-    # Complex race track with chicanes, hairpins, and varying radius turns
-    waypoints = np.array([
-        # Start/finish straight
-        [0, 0],
-        [10, 0],
-        [20, 0],
-        [30, 0],
-        
-        # Turn 1: Fast right-hander
-        [40, -3],
-        [50, -8],
-        [60, -10],
-        [70, -8],
-        
-        # Short straight into chicane
-        [80, -5],
-        [90, -2],
-        
-        # Chicane section (S-curves)
-        [95, 2],
-        [100, 6],
-        [105, 4],
-        [110, 0],
-        [115, -4],
-        [120, -2],
-        
-        # Long straight
-        [130, 0],
-        [140, 2],
-        [150, 4],
-        [160, 6],
-        
-        # Hairpin turn (180-degree)
-        [165, 10],
-        [168, 15],
-        [170, 20],
-        [168, 25],
-        [165, 30],
-        [160, 32],
-        [150, 30],
-        [140, 28],
-        [130, 26],
-        
-        # Back straight with slight curves
-        [120, 24],
-        [110, 22],
-        [100, 20],
-        [90, 18],
-        [80, 16],
-        
-        # Complex turn sequence
-        [70, 12],
-        [60, 8],
-        [50, 6],
-        [40, 8],
-        [30, 12],
-        [20, 14],
-        [10, 12],
-        [5, 8],
-        [2, 4],
-        
-        # # Return to start
-        # [0, 0]
-    ])
-    
-    return waypoints
-
-def get_local_waypoints(global_waypoints, current_position, horizon=15):
-    """Select a moving horizon of waypoints from the global path."""
-    # Find closest waypoint index
-    dists = np.linalg.norm(global_waypoints - current_position, axis=1)
-    closest_idx = np.argmin(dists)
-    
-    # Calculate chord lengths
-    dx = np.diff(global_waypoints[:, 0])
-    dy = np.diff(global_waypoints[:, 1])
-    ds = np.sqrt(dx**2 + dy**2)
-    s_values = np.concatenate(([0], np.cumsum(ds)))
-    
-    # Always use 7 waypoints (6 segments) to match initial setup
-    n_waypoints = 7
-    
-    # Calculate how many points to take before and after
-    n_before = min(n_waypoints // 2, closest_idx)
-    n_after = min(n_waypoints - n_before - 1, len(global_waypoints) - closest_idx - 1)
-    
-    # Get waypoints around the closest point
-    start_idx = closest_idx - n_before
-    end_idx = closest_idx + n_after + 1
-    local_waypoints = global_waypoints[start_idx:end_idx]
-    local_s_values = s_values[start_idx:end_idx]
-    
-    # If we need more points, linearly extend the path
-    if len(local_waypoints) < n_waypoints:
-        # Get direction of last segment
-        if len(local_waypoints) > 1:
-            direction = local_waypoints[-1] - local_waypoints[-2]
-            direction = direction / np.linalg.norm(direction)
-        else:
-            # If we only have one point, use a default direction
-            direction = np.array([1.0, 0.0])
-        
-        # Create linearly spaced points
-        n_extra = n_waypoints - len(local_waypoints)
-        last_point = local_waypoints[-1]
-        last_s = local_s_values[-1]
-        
-        # Generate points with increasing x-coordinates
-        x_values = np.linspace(last_point[0] + 0.1, last_point[0] + n_extra + 0.1, n_extra)
-        y_values = last_point[1] + direction[1] * (x_values - last_point[0])
-        s_values_extra = np.linspace(last_s + 0.1, last_s + n_extra + 0.1, n_extra)
-        
-        extra_points = np.column_stack((x_values, y_values))
-        local_waypoints = np.vstack([local_waypoints, extra_points])
-        local_s_values = np.concatenate([local_s_values, s_values_extra])
-    
-    return local_waypoints
+from Dynamics.spline_path_dynamics import CubicSplinePathDynamics
+from CoordinateSystem.spline_curvilinear_path import SplineCurvilinearPath
+from paths import (
+    create_test_path,
+    create_straight_line_path,
+    create_racetrack_path,
+    create_challenging_track
+)
+from utils import get_local_waypoints
 
 def run_simulation(path_type="curved"):
     # Create test path based on type
@@ -221,7 +41,8 @@ def run_simulation(path_type="curved"):
     # Debug plot spline and derivatives
     # plot_spline_debug(spline)
     
-    spline_coords = CurvilinearCoordinates(waypoints)
+    spline_curvilinear_path = SplineCurvilinearPath(len(waypoints), closed_path=True)
+    spline_curvilinear_path.set_waypoints(waypoints)
     
     # Create vehicle model
     vehicle_model = VehicleModel(
@@ -236,27 +57,29 @@ def run_simulation(path_type="curved"):
     )
     
     # Create spline path dynamics
-    spline_dynamics = SplinePathDynamics(vehicle_model, spline_coords)
+    spline_dynamics = CubicSplinePathDynamics(vehicle_model, len(waypoints), spline_curvilinear_path)
     
+    # Set cost weights (must be done before set_path)
+    state_weights = np.array([1e0, 0.0, 1e2, 1e-1, 1e-1])  # [s, u, e_y, e_ψ, v] - velocity weight = 0.0
+    input_weights = np.array([5, 10])  # [delta, a] - very low acceleration penalty
+    terminal_state_weights = 2 * state_weights  # [s, u, e_y, e_ψ, v] - terminal velocity weight = 0.0
+
     # Create MPC controller with more conservative settings
     mpc = MPCController(
+        state_weights=state_weights,
+        input_weights=input_weights,
+        terminal_state_weights=terminal_state_weights,
         vehicle_model=vehicle_model,
         prediction_horizon=5.0,
         dt=0.1
     )
     
-    # Set cost weights (must be done before set_path)
-    state_weights = np.array([1e0, 0.0, 1e2, 1e-1, 1e-1])  # [s, u, e_y, e_ψ, v] - velocity weight = 0.0
-    input_weights = np.array([5, 10])  # [delta, a] - very low acceleration penalty
-    terminal_weights = 2 * state_weights  # [s, u, e_y, e_ψ, v] - terminal velocity weight = 0.0
-    
-    mpc.set_weights(state_weights, input_weights, terminal_weights)
     mpc.set_path(spline_dynamics)
     
     # Initial state [s, u, e_y, e_ψ, v]
     # Start near the beginning of the path with proper s/u relationship
-    initial_u = 0.0  # chord-length parameter
-    initial_s = spline_coords.chord_to_arc_length(initial_u)  # convert to arc-length
+    initial_u = 0.0  # cubic spline parameter
+    initial_s = spline_curvilinear_path.chord_to_arc_length(initial_u)  # convert to arc-length
     
     initial_state = np.array([
         initial_s,  # s: arc-length progress
@@ -265,17 +88,6 @@ def run_simulation(path_type="curved"):
         0.0,        # e_ψ: aligned with path
         2.0         # v: moderate initial velocity to 2 m/s
     ])
-    
-    # Print initial state
-    print("\n=== DEBUG: Initial State ===")
-    print(f"Initial state: {initial_state}")
-    print(f"Initial position: {spline_dynamics.spline_curvilinear_to_cartesian(initial_state)[:2]}")
-
-    # Print constraints
-    constraints = mpc.spline_dynamics.get_constraints()
-    print("\n=== DEBUG: Constraints ===")
-    for k, v in constraints.items():
-        print(f"{k}: {v}")
     
     # Simulation parameters
     sim_time = 250.0  # seconds
@@ -333,7 +145,7 @@ def run_simulation(path_type="curved"):
             # Update spline parameters
             mpc.update_waypoints(local_waypoints)
             # Update parameters after waypoints change
-            parameters = spline_dynamics.get_spline_parameters_vector()
+            parameters = spline_dynamics.parameters
         
         lookahead_distance = 25.0
         s_end = min(current_s + lookahead_distance, path_length)

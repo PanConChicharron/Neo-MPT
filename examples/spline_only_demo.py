@@ -16,7 +16,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from Spline.cubic_spline import CubicSpline
 from Spline.chord_length_parametric_spline_2d import ChordLengthParametricSpline2D
-from CoordinateSystem.curvilinear_coordinates import CurvilinearCoordinates
+from CoordinateSystem.spline_curvilinear_path import SplineCurvilinearPath
 
 
 def main():
