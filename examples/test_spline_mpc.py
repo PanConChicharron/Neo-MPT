@@ -61,7 +61,7 @@ def run_simulation(path_type="curved"):
     # Set cost weights (must be done before set_path)
     state_weights = np.array([1e0, 0.0, 1e2, 1e-1, 1e-2])  # [s, u, e_y, e_ψ, v]
     input_weights = np.array([5, 1e2])  # [delta, a]
-    terminal_state_weights = 2 * state_weights  # [s, u, e_y, e_ψ, v]
+    terminal_state_weights = 2*np.array([1e0, 0.0, 1e2, 1e-1, 1e-2])  # [s, u, e_y, e_ψ, v]
 
     # Create MPC controller with more conservative settings
     mpc = MPCController(
@@ -85,6 +85,14 @@ def run_simulation(path_type="curved"):
         0.0,        # e_y: on path
         0.0,        # e_ψ: aligned with path
         2.0         # v: moderate initial velocity to 2 m/s
+    ])
+
+    initial_state = np.array([
+        100.32631888,
+        100.02754263,
+        -0.24048525,
+        -0.18048998,
+        4.72372534
     ])
     
     # Simulation parameters

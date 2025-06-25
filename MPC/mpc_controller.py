@@ -154,12 +154,12 @@ class MPCController:
         # Use numerical bounds for non-parametric constraints
         # Parametric bounds (u_min, u_max, path_length) will be handled via constraint functions
         ocp.constraints.lbx = np.array([
-            -1.0,                    # e_y: relaxed lateral error bounds
+            -0.1,                    # e_y: relaxed lateral error bounds
             -np.pi/3,                # e_ψ: heading error bounds
             constraints['velocity_min']  # v: velocity bounds
         ])
         ocp.constraints.ubx = np.array([
-            1.0,                     # e_y: relaxed lateral error bounds
+            0.1,                     # e_y: relaxed lateral error bounds
             np.pi/3,                 # e_ψ: heading error bounds
             constraints['velocity_max']  # v: velocity bounds
         ])

@@ -49,7 +49,7 @@ class CubicSplinePathDynamics(CurvilinearDynamics):
     def _create_symbolic_spline_functions(self):
         """Create symbolic functions for spline evaluation and derivatives."""
         # Symbolic parameter
-        u = ca.SX.sym('u')
+        self.u = ca.SX.sym('u')
         
         # Create a single flattened parameter vector
         n_knots = self.num_waypoints
@@ -65,7 +65,7 @@ class CubicSplinePathDynamics(CurvilinearDynamics):
         coeffs_y_flat = ca.reshape(coeffs_y, -1, 1)
 
         # Concatenate all into a single parameter vector
-        params = ca.vertcat(knots, coeffs_x_flat, coeffs_y_flat)
+        self.parameters = ca.vertcat(knots, coeffs_x_flat, coeffs_y_flat)
         
         # Initialize outputs
         x_val = ca.SX.zeros(1)
@@ -80,15 +80,15 @@ class CubicSplinePathDynamics(CurvilinearDynamics):
             # Condition: knots[i] <= u < knots[i+1] (or u <= knots[i+1] for last segment)
             if i == 0:
                 # For first segment, include u = knots[0]
-                condition = ca.logic_and(u >= knots[i], u < knots[i+1])
+                condition = ca.logic_and(self.u >= knots[i], self.u < knots[i+1])
             elif i == self.n_segments - 1:
                 # For last segment, include u = knots[-1]
-                condition = ca.logic_and(u >= knots[i], u <= knots[i+1])
+                condition = ca.logic_and(self.u >= knots[i], self.u <= knots[i+1])
             else:
-                condition = ca.logic_and(u >= knots[i], u < knots[i+1])
+                condition = ca.logic_and(self.u >= knots[i], self.u < knots[i+1])
             
             # Local parameter within segment
-            t = u - knots[i]
+            t = self.u - knots[i]
             
             # Cubic polynomial: f(t) = a*t^3 + b*t^2 + c*t + d
             # Note: scipy stores coefficients in reverse order [d, c, b, a]
@@ -115,34 +115,21 @@ class CubicSplinePathDynamics(CurvilinearDynamics):
             d2x_du2 = ca.if_else(condition, d2x_seg, d2x_du2)
             d2y_du2 = ca.if_else(condition, d2y_seg, d2y_du2)
         
-        # Create symbolic functions with single parameter vector
-        self.spline_position = ca.Function('spline_pos', [u, params], 
-                                         [ca.vertcat(x_val, y_val)])
-        self.spline_tangent = ca.Function('spline_tangent', [u, params], 
-                                        [ca.vertcat(dx_du, dy_du)])
-        self.spline_second_deriv = ca.Function('spline_second_deriv', [u, params], 
-                                             [ca.vertcat(d2x_du2, d2y_du2)])
-        
         # Tangent magnitude: |dx/du|
         tangent_mag = ca.sqrt(dx_du**2 + dy_du**2)
-        self.spline_tangent_magnitude = ca.Function('spline_tangent_mag', 
-                                                  [u, params], 
-                                                  [tangent_mag])
+        self.spline_tangent_magnitude = tangent_mag
         
         # Curvature: κ = (x'y'' - y'x'') / (x'² + y'²)^(3/2)
         numerator = dx_du * d2y_du2 - dy_du * d2x_du2
         denominator = (dx_du**2 + dy_du**2)**(3/2)
         # Add small epsilon to avoid division by zero
         curvature = numerator / (denominator + 1e-12)
-        self.spline_curvature = ca.Function('spline_curvature', 
-                                          [u, params], 
-                                          [curvature])
+        self.spline_curvature = curvature
     
     def _create_spline_symbolic_model(self):
         """Create symbolic model with spline parameter mapping."""
         # Extended curvilinear state variables
         self.s = ca.SX.sym('s')           # arc length along path
-        self.u = ca.SX.sym('u')           # spline parameter (chord-length)
         self.e_y = ca.SX.sym('e_y')       # lateral error
         self.e_ψ = ca.SX.sym('e_ψ')       # heading error
         self.v = ca.SX.sym('v')           # velocity
@@ -155,18 +142,9 @@ class CubicSplinePathDynamics(CurvilinearDynamics):
         
         self.input = ca.vertcat(self.delta, self.a)
         
-        # Create the flattened parameter vector for symbolic computation
-        n_knots = self.num_waypoints
-
-        n_coeffs_x = 4 * self.n_segments
-        n_coeffs_y = 4 * self.n_segments
-        total_params = n_knots + n_coeffs_x + n_coeffs_y
-        
-        self.parameters = ca.SX.sym('params', total_params)
-        
         # Get spline properties symbolically using the chord-length parameter u
-        self.kappa = self.spline_curvature(self.u, self.parameters)
-        self.ds_du = self.spline_tangent_magnitude(self.u, self.parameters)
+        self.kappa = self.spline_curvature
+        self.ds_du = self.spline_tangent_magnitude
         
         # Vehicle slip angle (from bicycle model)
         lf = self.vehicle_model.wheelbase_front
