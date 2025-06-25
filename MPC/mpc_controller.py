@@ -18,8 +18,11 @@ class MPCController:
                  vehicle_model: VehicleModel, 
                  state_weights: np.ndarray, input_weights: np.ndarray, 
                  terminal_state_weights: np.ndarray,
+                 u_min: float,
+                 u_max: float,
+                 path_length: float,
                  prediction_horizon: float = 2.0, 
-                 dt: float = 0.1):
+                 dt: float = 0.1,):
         """
         Initialize MPC controller.
         
@@ -42,7 +45,11 @@ class MPCController:
         
         # Initialize solver
         self.solver = None
-        self.total_path_length = None
+
+        self.u_min = u_min
+        self.u_max = u_max
+
+        self.path_length = path_length
     
     def set_path(self, spline_dynamics: CubicSplinePathDynamics):
         """
@@ -52,7 +59,6 @@ class MPCController:
             spline_dynamics: SplinePathDynamics object containing the path
         """
         self.spline_dynamics = spline_dynamics
-        self.total_path_length = spline_dynamics.spline_coords.path_length
         self._setup_ocp()
     
     def _handle_constraints(self, constraints: Dict) -> Dict:
@@ -103,7 +109,7 @@ class MPCController:
         ocp.model.name = 'spline_path_vehicle'
         
         ocp.dims.np = self.spline_dynamics.parameters.numel()
-        ocp.parameter_values = self.spline_dynamics.get_spline_parameters_vector()
+        ocp.parameter_values = np.zeros(ocp.dims.np)
         
         # Dimensions
         ocp.solver_options.N_horizon = self.N
@@ -157,18 +163,16 @@ class MPCController:
         
         # State constraints
         # Constrain all states: [s, u, e_y, e_ψ, v]
-        total_chord_length = self.spline_dynamics.spline_coords.total_chord_length
-        path_length = self.spline_dynamics.spline_coords.path_length
         ocp.constraints.lbx = np.array([
             0.0,                      # s: bounded by actual path length (arc-length)
-            constraints['u_min'],     # u: bounded by chord-length parameter range
+            self.u_min,     # u: bounded by chord-length parameter range
             -1.0,                    # e_y: relaxed lateral error bounds
             -np.pi/3,                   # e_ψ: heading error bounds
             constraints['velocity_min']  # v: velocity bounds
         ])
         ocp.constraints.ubx = np.array([
-            path_length,              # s: bounded by actual path length (arc-length)
-            constraints['u_max'],     # u: bounded by chord-length parameter range
+            self.path_length,              # s: bounded by actual path length (arc-length)
+            self.u_max,     # u: bounded by chord-length parameter range
             1.0,                     # e_y: relaxed lateral error bounds
             np.pi/3,                    # e_ψ: heading error bounds
             constraints['velocity_max']  # v: velocity bounds

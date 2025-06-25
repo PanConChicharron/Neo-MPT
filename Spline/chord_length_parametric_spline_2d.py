@@ -296,3 +296,15 @@ class ChordLengthParametricSpline2D:
             'u_values': u_values,
             'path_length': self.path_length
         } 
+    
+    def get_parameters(self) -> np.ndarray:
+        """Get the parameters of the spline in the same format as spline_dynamics.get_spline_parameters_vector()."""
+        # Flip coefficient order to match CasADi format: [a, b, c, d] instead of scipy's [d, c, b, a]
+        coeffs_x_flipped = np.flip(self.spline.spline_x.c, axis=0)
+        coeffs_y_flipped = np.flip(self.spline.spline_y.c, axis=0)
+        
+        return np.concatenate([
+            self.spline.spline_x.x,                    # Knots (shared by both X and Y splines)
+            coeffs_x_flipped.flatten('F'),             # X coefficients flipped and flattened in Fortran order
+            coeffs_y_flipped.flatten('F')              # Y coefficients flipped and flattened in Fortran order
+        ])

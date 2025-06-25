@@ -57,7 +57,7 @@ def run_simulation(path_type="curved"):
     )
     
     # Create spline path dynamics
-    spline_dynamics = CubicSplinePathDynamics(vehicle_model, len(waypoints), spline_curvilinear_path)
+    spline_dynamics = CubicSplinePathDynamics(vehicle_model, len(waypoints))
     
     # Set cost weights (must be done before set_path)
     state_weights = np.array([1e0, 0.0, 1e2, 1e-1, 1e-1])  # [s, u, e_y, e_ψ, v] - velocity weight = 0.0
@@ -70,6 +70,9 @@ def run_simulation(path_type="curved"):
         input_weights=input_weights,
         terminal_state_weights=terminal_state_weights,
         vehicle_model=vehicle_model,
+        u_min = spline_curvilinear_path.u_values[0],
+        u_max = spline_curvilinear_path.u_values[-1],
+        path_length = spline_curvilinear_path.path_length,
         prediction_horizon=5.0,
         dt=0.1
     )
@@ -101,7 +104,7 @@ def run_simulation(path_type="curved"):
     states[0] = initial_state
 
     # Get initial spline parameters vector
-    parameters = spline_dynamics.get_spline_parameters_vector()
+    parameters = spline_curvilinear_path.get_parameters()
     
     # Main simulation loop
     for step in range(n_steps):
@@ -109,7 +112,7 @@ def run_simulation(path_type="curved"):
         
         # Check if we've reached the end of the path
         current_s = states[step][0]
-        path_length = spline_dynamics.spline_coords.path_length
+        path_length = spline_curvilinear_path.get_path_length()
         remaining_path = path_length - current_s
         
         print(f"  Current s: {current_s:.2f} m, Path length: {path_length:.2f} m, Remaining: {remaining_path:.2f} m")
