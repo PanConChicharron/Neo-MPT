@@ -70,9 +70,6 @@ def run_simulation(path_type="curved"):
         input_weights=input_weights,
         terminal_state_weights=terminal_state_weights,
         vehicle_model=vehicle_model,
-        u_min = spline_curvilinear_path.u_values[0],
-        u_max = spline_curvilinear_path.u_values[-1],
-        path_length = spline_curvilinear_path.path_length,
         prediction_horizon=5.0,
         dt=0.1
     )
@@ -105,6 +102,7 @@ def run_simulation(path_type="curved"):
 
     # Get initial spline parameters vector
     parameters = spline_curvilinear_path.get_parameters()
+    parameters = np.concatenate((parameters, [spline_curvilinear_path.u_values[0], spline_curvilinear_path.u_values[-1], spline_curvilinear_path.path_length]))
     
     # Main simulation loop
     for step in range(n_steps):
@@ -148,7 +146,9 @@ def run_simulation(path_type="curved"):
             # Update spline parameters
             mpc.update_waypoints(local_waypoints)
             # Update parameters after waypoints change
-            parameters = spline_dynamics.get_spline_parameters_vector()
+            parameters = spline_dynamics.get_spline_parameters_vector()    
+            parameters = np.concatenate((parameters, [spline_curvilinear_path.u_values[0], spline_curvilinear_path.u_values[-1], spline_curvilinear_path.path_length]))
+    
         
         lookahead_distance = 25.0
         s_end = min(current_s + lookahead_distance, path_length)
@@ -189,7 +189,7 @@ def run_simulation(path_type="curved"):
             print(f"  Current velocity: {states[step][4]:.2f} m/s, Current s: {states[step][0]:.2f} m")
         
         # Simulate one step
-        states[step + 1] = spline_dynamics.simulate_step(states[step], inputs[step], parameters, dt)
+        states[step + 1] = spline_dynamics.simulate_step(states[step], inputs[step], parameters[0:-3], dt)
         
     # Print timing statistics
     actual_steps = len([t for t in solve_times if t > 0])  # Count non-zero solve times

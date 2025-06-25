@@ -18,9 +18,6 @@ class MPCController:
                  vehicle_model: VehicleModel, 
                  state_weights: np.ndarray, input_weights: np.ndarray, 
                  terminal_state_weights: np.ndarray,
-                 u_min: float,
-                 u_max: float,
-                 path_length: float,
                  prediction_horizon: float = 2.0, 
                  dt: float = 0.1,):
         """
@@ -105,10 +102,16 @@ class MPCController:
         ocp.model.f_expl_expr = dynamics_expr
         ocp.model.x = x
         ocp.model.u = u
-        ocp.model.p = self.spline_dynamics.parameters
+
+        u_min_ca = ca.SX.sym('u_min', 1)
+        u_max_ca = ca.SX.sym('u_max', 1)
+
+        path_length_ca = ca.SX.sym('path_length', 1)
+
+        ocp.model.p = ca.vertcat(self.spline_dynamics.parameters, u_min_ca, u_max_ca, path_length_ca)
         ocp.model.name = 'spline_path_vehicle'
         
-        ocp.dims.np = self.spline_dynamics.parameters.numel()
+        ocp.dims.np = ocp.model.p.numel()
         ocp.parameter_values = np.zeros(ocp.dims.np)
         
         # Dimensions
@@ -162,22 +165,38 @@ class MPCController:
         ocp.constraints.idxbu = np.array([0, 1])
         
         # State constraints
-        # Constrain all states: [s, u, e_y, e_ψ, v]
+        # Use numerical bounds for non-parametric constraints
+        # Parametric bounds (u_min, u_max, path_length) will be handled via constraint functions
         ocp.constraints.lbx = np.array([
-            0.0,                      # s: bounded by actual path length (arc-length)
-            self.u_min,     # u: bounded by chord-length parameter range
+            -1e6,                    # s: will be constrained via constraint function
+            -1e6,                    # u: will be constrained via constraint function  
             -1.0,                    # e_y: relaxed lateral error bounds
-            -np.pi/3,                   # e_ψ: heading error bounds
+            -np.pi/3,                # e_ψ: heading error bounds
             constraints['velocity_min']  # v: velocity bounds
         ])
         ocp.constraints.ubx = np.array([
-            self.path_length,              # s: bounded by actual path length (arc-length)
-            self.u_max,     # u: bounded by chord-length parameter range
+            1e6,                     # s: will be constrained via constraint function
+            1e6,                     # u: will be constrained via constraint function
             1.0,                     # e_y: relaxed lateral error bounds
-            np.pi/3,                    # e_ψ: heading error bounds
+            np.pi/3,                 # e_ψ: heading error bounds
             constraints['velocity_max']  # v: velocity bounds
         ])
-        ocp.constraints.idxbx = np.array([0, 1, 2, 3, 4])  # indices of all states
+        ocp.constraints.idxbx = np.array([0, 1, 2, 3, 4])
+        
+        # Add parametric constraint functions for s, u bounds
+        # Constraint: 0 <= s <= path_length
+        # Constraint: u_min <= u <= u_max
+        h_expr = ca.vertcat(
+            x[0],                    # s >= 0 (will be constrained as h >= 0)
+            path_length_ca - x[0],   # s <= path_length (path_length - s >= 0)
+            x[1] - u_min_ca,         # u >= u_min (u - u_min >= 0)
+            u_max_ca - x[1]          # u <= u_max (u_max - u >= 0)
+        )
+        
+        ocp.model.con_h_expr = h_expr
+        ocp.constraints.lh = np.array([0.0, 0.0, 0.0, 0.0])  # All constraints >= 0
+        ocp.constraints.uh = np.array([1e6, 1e6, 1e6, 1e6])  # Upper bounds (effectively unbounded)
+        ocp.dims.nh = 4
         
         # Initial condition constraint - will be set in solve()
         ocp.constraints.x0 = np.zeros(5)  # Placeholder, will be updated

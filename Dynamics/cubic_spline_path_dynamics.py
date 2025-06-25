@@ -175,8 +175,6 @@ class CubicSplinePathDynamics(CurvilinearDynamics):
         
         beta = ca.atan(lr * ca.tan(self.delta) / L)
         
-        # Corrected curvilinear dynamics equations:
-        # 
         # Key insight: Standard curvilinear coordinates use arc-length (s) as the primary parameter.
         # We should evolve s using standard curvilinear dynamics, then compute u from the 
         # inverse relationship.
