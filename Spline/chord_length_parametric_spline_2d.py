@@ -273,30 +273,6 @@ class ChordLengthParametricSpline2D:
         else:
             return np.arctan2(derivatives[:, 1], derivatives[:, 0])
     
-    def generate_trajectory_at(self, u_values: np.ndarray) -> dict:
-        """
-        Generate trajectory at specific chord-length parameter values.
-        
-        Args:
-            u_values: Array of chord-length parameter values
-            
-        Returns:
-            Dictionary containing trajectory data
-        """
-        positions = self.evaluate(u_values)
-        velocities = self.evaluate_derivatives(u_values, order=1)
-        accelerations = self.evaluate_derivatives(u_values, order=2)
-        curvatures = self.compute_curvature(u_values)
-        
-        return {
-            'positions': positions,
-            'velocities': velocities,
-            'accelerations': accelerations,
-            'curvatures': curvatures,
-            'u_values': u_values,
-            'path_length': self.path_length
-        } 
-    
     def get_parameters(self) -> np.ndarray:
         """Get the parameters of the spline in the same format as spline_dynamics.get_spline_parameters_vector()."""
         # Flip coefficient order to match CasADi format: [a, b, c, d] instead of scipy's [d, c, b, a]

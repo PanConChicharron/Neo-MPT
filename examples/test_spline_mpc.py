@@ -70,11 +70,10 @@ def run_simulation(path_type="curved"):
         input_weights=input_weights,
         terminal_state_weights=terminal_state_weights,
         vehicle_model=vehicle_model,
+        spline_dynamics=spline_dynamics,
         prediction_horizon=5.0,
-        dt=0.1
+        dt=0.1,
     )
-    
-    mpc.set_path(spline_dynamics)
     
     # Initial state [s, u, e_y, e_ψ, v]
     # Start near the beginning of the path with proper s/u relationship

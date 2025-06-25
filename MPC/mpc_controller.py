@@ -18,8 +18,9 @@ class MPCController:
                  vehicle_model: VehicleModel, 
                  state_weights: np.ndarray, input_weights: np.ndarray, 
                  terminal_state_weights: np.ndarray,
+                 spline_dynamics: CubicSplinePathDynamics,
                  prediction_horizon: float = 2.0, 
-                 dt: float = 0.1,):
+                 dt: float = 0.1):
         """
         Initialize MPC controller.
         
@@ -39,22 +40,7 @@ class MPCController:
         self.state_weights = state_weights
         self.input_weights = input_weights
         self.terminal_state_weights = terminal_state_weights
-        
-        # Initialize solver
-        self.solver = None
 
-        self.u_min = u_min
-        self.u_max = u_max
-
-        self.path_length = path_length
-    
-    def set_path(self, spline_dynamics: CubicSplinePathDynamics):
-        """
-        Set the spline path for tracking.
-        
-        Args:
-            spline_dynamics: SplinePathDynamics object containing the path
-        """
         self.spline_dynamics = spline_dynamics
         self._setup_ocp()
     
