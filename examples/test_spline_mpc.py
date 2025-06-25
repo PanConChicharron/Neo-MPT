@@ -9,7 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from MPC.mpc_controller import MPCController
 from Dynamics.vehicle_model import VehicleModel
-from Dynamics.spline_path_dynamics import CubicSplinePathDynamics
+from Dynamics.cubic_spline_path_dynamics import CubicSplinePathDynamics
 from CoordinateSystem.spline_curvilinear_path import SplineCurvilinearPath
 from paths import (
     create_test_path,
@@ -41,7 +41,7 @@ def run_simulation(path_type="curved"):
     # Debug plot spline and derivatives
     # plot_spline_debug(spline)
     
-    spline_curvilinear_path = SplineCurvilinearPath(len(waypoints), closed_path=True)
+    spline_curvilinear_path = SplineCurvilinearPath(len(waypoints), closed_path=False)
     spline_curvilinear_path.set_waypoints(waypoints)
     
     # Create vehicle model
@@ -124,11 +124,11 @@ def run_simulation(path_type="curved"):
             break
         
         # Get current position
-        current_pos = spline_dynamics.spline_curvilinear_to_cartesian(states[step])[:2]
+        current_pos = spline_curvilinear_path.curvilinear_to_cartesian(states[step][1], states[step][0])[:2]
         
         # Check if coordinate transformation is failing (position stuck or invalid)
         if step > 0:
-            prev_pos = spline_dynamics.spline_curvilinear_to_cartesian(states[step-1])[:2]
+            prev_pos = spline_curvilinear_path.curvilinear_to_cartesian(states[step-1][1], states[step-1][0])[:2]
             pos_change = np.linalg.norm(current_pos - prev_pos)
             if pos_change < 1e-6 and states[step][4] > 0.1:  # Position not changing but velocity > 0
                 print(f"⚠️  WARNING: Vehicle position stuck at {current_pos}, but velocity = {states[step][4]:.2f} m/s")
@@ -145,7 +145,7 @@ def run_simulation(path_type="curved"):
             # Update spline parameters
             mpc.update_waypoints(local_waypoints)
             # Update parameters after waypoints change
-            parameters = spline_dynamics.parameters
+            parameters = spline_dynamics.get_spline_parameters_vector()
         
         lookahead_distance = 25.0
         s_end = min(current_s + lookahead_distance, path_length)
@@ -227,7 +227,7 @@ def run_simulation(path_type="curved"):
             print(f"✅ MPC solver is faster than real-time")
     
     # Plot results with timing information
-    plot_results_with_timing(states, inputs, solve_times, dt, spline_dynamics)
+    plot_results_with_timing(states, inputs, solve_times, dt, spline_curvilinear_path)
     
     return {
         'states': states,
@@ -235,7 +235,7 @@ def run_simulation(path_type="curved"):
         'solve_times': solve_times
     }
 
-def plot_results_with_timing(states, inputs, solve_times, dt, spline_dynamics):
+def plot_results_with_timing(states, inputs, solve_times, dt, spline_curvilinear_path):
     """Plot simulation results including MPC timing information."""
     # Create time vector
     t = np.arange(len(states)) * dt
@@ -246,18 +246,18 @@ def plot_results_with_timing(states, inputs, solve_times, dt, spline_dynamics):
     # Plot path and vehicle trajectory
     axs[0, 0].set_title('Path and Vehicle Trajectory')
     # Plot reference path
-    s_values = np.linspace(0, spline_dynamics.spline_coords.path_length, 1000)
-    path_points = np.array([spline_dynamics.spline_coords.curvilinear_to_cartesian(s, 0) for s in s_values])
+    u_values = np.linspace(0, spline_curvilinear_path.chord_length, 1000)
+    path_points = np.array([spline_curvilinear_path.curvilinear_to_cartesian(u, 0) for u in u_values])
     axs[0, 0].plot(path_points[:, 0], path_points[:, 1], 'b-', label='Reference Path')
     
     # Plot vehicle trajectory
-    vehicle_points = np.array([spline_dynamics.spline_curvilinear_to_cartesian(state)[:2] for state in states])
+    vehicle_points = np.array([spline_curvilinear_path.curvilinear_to_cartesian(state[1], state[2])[:2] for state in states])
     axs[0, 0].plot(vehicle_points[:, 0], vehicle_points[:, 1], 'r-', label='Vehicle')
     
     # Mark initial and final poses
     initial_state = states[0]
     initial_pos = vehicle_points[0]
-    initial_heading = spline_dynamics.spline_coords.get_heading(initial_state[0])
+    initial_heading = spline_curvilinear_path.get_heading(initial_state[0])
     arrow_length = 2.0
     initial_dx = arrow_length * np.cos(initial_heading)
     initial_dy = arrow_length * np.sin(initial_heading)
@@ -267,7 +267,7 @@ def plot_results_with_timing(states, inputs, solve_times, dt, spline_dynamics):
     
     final_state = states[-1]
     final_pos = vehicle_points[-1]
-    final_heading = spline_dynamics.spline_coords.get_heading(final_state[0])
+    final_heading = spline_curvilinear_path.get_heading(final_state[0])
     final_dx = arrow_length * np.cos(final_heading)
     final_dy = arrow_length * np.sin(final_heading)
     axs[0, 0].arrow(final_pos[0], final_pos[1], final_dx, final_dy, 
@@ -281,6 +281,7 @@ def plot_results_with_timing(states, inputs, solve_times, dt, spline_dynamics):
     # Plot states
     axs[0, 1].set_title('States')
     axs[0, 1].plot(t, states[:, 0], label='s (progress)')
+    axs[0, 1].plot(t, states[:, 1], label='u (chord length)')
     axs[0, 1].legend()
     axs[0, 1].grid(True)
     
@@ -414,11 +415,11 @@ def plot_results_with_timing(states, inputs, solve_times, dt, spline_dynamics):
     plt.tight_layout()
     plt.show()
 
-def plot_results(states, inputs, dt, spline_dynamics):
+def plot_results(states, inputs, dt, spline_curvilinear_path):
     """Plot simulation results - wrapper for backward compatibility."""
     # Create dummy solve times array for backward compatibility
     solve_times = np.zeros(len(inputs))
-    plot_results_with_timing(states, inputs, solve_times, dt, spline_dynamics)
+    plot_results_with_timing(states, inputs, solve_times, dt, spline_curvilinear_path)
 
 def run_both_tests():
     """Run both curved and straight-line tests for comparison."""

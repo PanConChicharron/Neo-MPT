@@ -62,6 +62,7 @@ class ChordLengthParametricSpline2D:
             distances[i] = distances[i-1] + np.sqrt(dx**2 + dy**2)
         
         self.u_values = distances  # Chord-length parameters
+        self.chord_length = distances[-1]
         # Note: path_length will be computed as actual arc length using RK4 after spline creation
     
     def _create_spline(self):
@@ -231,6 +232,10 @@ class ChordLengthParametricSpline2D:
         """Get total path length (actual arc length computed via RK4 integration)."""
         return self.path_length
     
+    def get_chord_length(self) -> float:
+        """Get total chord length."""
+        return self.chord_length
+    
     def get_waypoints(self) -> np.ndarray:
         """Get original waypoints."""
         return self.waypoints.copy()
@@ -238,56 +243,6 @@ class ChordLengthParametricSpline2D:
     def get_knots(self) -> np.ndarray:
         """Get cubic spline parameter values."""
         return self.u_values.copy()
-    
-    def plot_spline(self, num_points: int = 200, show_waypoints: bool = True, 
-                   show_curvature: bool = False, figsize: tuple = (12, 5)):
-        """
-        Plot the spline with optional waypoints and curvature.
-        
-        Args:
-            num_points: Number of points for smooth curve visualization
-            show_waypoints: Whether to show original waypoints
-            show_curvature: Whether to show curvature plot
-            figsize: Figure size tuple
-        """
-        trajectory = self.generate_trajectory(num_points)
-        
-        if show_curvature:
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
-        else:
-            fig, ax1 = plt.subplots(1, 1, figsize=(figsize[0]//2, figsize[1]))
-        
-        # Plot spline curve
-        positions = trajectory['positions']
-        ax1.plot(positions[:, 0], positions[:, 1], 'b-', linewidth=2, label='Spline')
-        
-        if show_waypoints:
-            ax1.plot(self.waypoints[:, 0], self.waypoints[:, 1], 'ro', 
-                    markersize=8, label='Waypoints')
-            
-            # Add waypoint numbers
-            for i, (x, y) in enumerate(self.waypoints):
-                ax1.annotate(f'{i}', (x, y), xytext=(5, 5), 
-                           textcoords='offset points', fontsize=10)
-        
-        ax1.set_xlabel('X')
-        ax1.set_ylabel('Y')
-        ax1.set_title('2D Spline Path')
-        ax1.legend()
-        ax1.grid(True, alpha=0.3)
-        ax1.axis('equal')
-        
-        if show_curvature:
-            # Plot curvature
-            curvatures = trajectory['curvatures']
-            ax2.plot(trajectory['u_values'], curvatures, 'g-', linewidth=2)
-            ax2.set_xlabel('Chord-length Parameter u')
-            ax2.set_ylabel('Curvature')
-            ax2.set_title('Path Curvature')
-            ax2.grid(True, alpha=0.3)
-        
-        plt.tight_layout()
-        plt.show()
     
     def resample_trajectory(self, du: float) -> dict:
         """

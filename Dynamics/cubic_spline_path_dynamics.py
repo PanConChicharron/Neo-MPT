@@ -36,6 +36,11 @@ class CubicSplinePathDynamics(CurvilinearDynamics):
         self.n_segments = self.num_waypoints - 1
         self.spline_coords = spline_coords
         self.n_states = 5  # [s, u, e_y, e_ψ, v]
+
+        # Store as CasADi parameters for symbolic computation
+        self.knots_ca = ca.SX.sym('knots', self.num_waypoints)
+        self.coeffs_x_ca = ca.SX.sym('coeffs_x', 4, self.n_segments)
+        self.coeffs_y_ca = ca.SX.sym('coeffs_y', 4, self.n_segments)
         
         # Extract spline coefficients for symbolic representation
         self._extract_spline_coefficients()
@@ -56,21 +61,13 @@ class CubicSplinePathDynamics(CurvilinearDynamics):
         spline_x = self.spline_coords.spline.spline_x
         spline_y = self.spline_coords.spline.spline_y
         
-        # Extract knot points and coefficients
-        self.knots = spline_x.x  # Parameter values (same for both x and y)
-        
         # Coefficients for each segment: [a, b, c, d] where spline = a*t^3 + b*t^2 + c*t + d
         # scipy stores coefficients in reverse order: [d, c, b, a]
         self.coeffs_x = np.flip(spline_x.c, axis=0)  # Shape: (4, n_segments)
         self.coeffs_y = np.flip(spline_y.c, axis=0)  # Shape: (4, n_segments)
         
-        # Store as CasADi parameters for symbolic computation
-        self.knots_ca = ca.SX.sym('knots', self.num_waypoints)
-        self.coeffs_x_ca = ca.SX.sym('coeffs_x', 4, self.n_segments)
-        self.coeffs_y_ca = ca.SX.sym('coeffs_y', 4, self.n_segments)
-        
         # Store numerical values for parameter updates
-        self.knots_np = self.knots
+        self.knots_np = spline_x.x
         self.coeffs_x_np = self.coeffs_x
         self.coeffs_y_np = self.coeffs_y
     
@@ -80,10 +77,9 @@ class CubicSplinePathDynamics(CurvilinearDynamics):
         u = ca.SX.sym('u')
         
         # Create a single flattened parameter vector
-        n_knots = self.knots.shape[0]
-        n_coeffs_x = self.coeffs_x.shape[0] * self.coeffs_x.shape[1]  # 4 * n_segments
-        n_coeffs_y = self.coeffs_y.shape[0] * self.coeffs_y.shape[1]  # 4 * n_segments
-        total_params = n_knots + n_coeffs_x + n_coeffs_y
+        n_knots = self.num_waypoints
+        n_coeffs_x = 4 * self.n_segments
+        n_coeffs_y = 4 * self.n_segments
         
         # Extract parameters from the flattened vector
         knots = ca.SX.sym('knots', n_knots)
@@ -187,7 +183,7 @@ class CubicSplinePathDynamics(CurvilinearDynamics):
         self.input = ca.vertcat(self.delta, self.a)
         
         # Create the flattened parameter vector for symbolic computation
-        n_knots = self.knots.shape[0]
+        n_knots = self.knots_ca.shape[0]
         n_coeffs_x = self.coeffs_x.shape[0] * self.coeffs_x.shape[1]
         n_coeffs_y = self.coeffs_y.shape[0] * self.coeffs_y.shape[1]
         total_params = n_knots + n_coeffs_x + n_coeffs_y

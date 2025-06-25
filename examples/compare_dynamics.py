@@ -10,7 +10,7 @@ from Spline.spline_fitter import SplineFitter
 from MPC.spline_path_dynamics import SplinePathDynamics
 from Dynamics.vehicle_model import VehicleModel
 from CoordinateSystem.spline_curvilinear_path import SplineCurvilinearPath
-from Dynamics.spline_path_dynamics import CubicSplinePathDynamics
+from Dynamics.cubic_spline_path_dynamics import CubicSplinePathDynamics
 
 
 def create_test_path():

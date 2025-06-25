@@ -1,7 +1,7 @@
 import numpy as np
 import casadi as ca
 from Spline.spline_fitter import SplineFitter
-from Dynamics.spline_path_dynamics import CubicSplinePathDynamics
+from Dynamics.cubic_spline_path_dynamics import CubicSplinePathDynamics
 from Dynamics.vehicle_model import VehicleModel
 from CoordinateSystem.curvilinear_spline import CurvilinearCoordinates
 

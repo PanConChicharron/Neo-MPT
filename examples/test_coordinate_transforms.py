@@ -6,7 +6,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from Spline.spline_fitter import SplineFitter
-from Dynamics.spline_path_dynamics import CubicSplinePathDynamics
+from Dynamics.cubic_spline_path_dynamics import CubicSplinePathDynamics
 from Dynamics.vehicle_model import VehicleModel
 from CoordinateSystem.spline_curvilinear_coordinates import CurvilinearCoordinates
 
