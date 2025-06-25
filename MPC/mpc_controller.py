@@ -196,6 +196,9 @@ class MPCController:
         ocp.solver_options.nlp_solver_max_iter = 50
         ocp.solver_options.qp_solver_iter_max = 50
         ocp.solver_options.print_level = 0
+
+        # ocp.solver_options.print_level = 1
+        # ocp.solver_options.qp_solver_print_level = 1
         
         # Create solver
         self.solver = AcadosOcpSolver(ocp, json_file='acados_ocp.json')

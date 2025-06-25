@@ -59,8 +59,8 @@ def run_simulation(path_type="curved"):
     spline_dynamics = CubicSplinePathDynamics(vehicle_model, num_waypoints)
     
     # Set cost weights (must be done before set_path)
-    state_weights = np.array([1e0, 0.0, 1e2, 1e-1, 1e-1])  # [s, u, e_y, e_ψ, v] - velocity weight = 0.0
-    input_weights = np.array([5, 10])  # [delta, a] - very low acceleration penalty
+    state_weights = np.array([1e0, 0.0, 1e2, 1e-1, 1e-2])  # [s, u, e_y, e_ψ, v] - velocity weight = 0.0
+    input_weights = np.array([5, 1e2])  # [delta, a] - very low acceleration penalty
     terminal_state_weights = 2 * state_weights  # [s, u, e_y, e_ψ, v] - terminal velocity weight = 0.0
 
     # Create MPC controller with more conservative settings
@@ -182,6 +182,7 @@ def run_simulation(path_type="curved"):
         if step % 10 == 0 or step > n_steps - 20:  # Print first few and last 20 steps
             print(f"  Control input: steering={inputs[step][0]:.4f} rad ({np.rad2deg(inputs[step][0]):.2f}°), acceleration={inputs[step][1]:.4f} m/s²")
             print(f"  Current velocity: {states[step][4]:.2f} m/s, Current s: {states[step][0]:.2f} m")
+            print(f"  Solve time: {solve_times[step]:.4f} s")
         
         # Simulate one step
         states[step + 1] = spline_dynamics.simulate_step(states[step], inputs[step], parameters[0:-3], dt)
