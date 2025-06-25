@@ -146,7 +146,15 @@ class ChordLengthParametricSpline2D:
             'path_length': self.path_length
         }
     
-    def get_closest_point(self, query_point: np.ndarray) -> Tuple[float, np.ndarray]:
+    def find_closest_knot(self, query_point: np.ndarray) -> float:
+        """
+        Find the closest knot to a given query point.
+        """
+        waypoint_distances = np.linalg.norm(self.waypoints - query_point, axis=1)
+        min_waypoint_idx = np.argmin(waypoint_distances)
+        return self.u_values[min_waypoint_idx]
+    
+    def find_closest_point(self, query_point: np.ndarray) -> Tuple[float, np.ndarray]:
         """
         Find the closest point on the spline to a given query point using Newton's method.
         
@@ -160,9 +168,7 @@ class ChordLengthParametricSpline2D:
         # Use waypoints for coarse search instead of dense sampling
         # This is much more efficient and leverages the fact that curvature
         # varies monotonically across spline segments
-        waypoint_distances = np.linalg.norm(self.waypoints - query_point, axis=1)
-        min_waypoint_idx = np.argmin(waypoint_distances)
-        u_initial = self.u_values[min_waypoint_idx]
+        u_initial = self.find_closest_knot(query_point)
         
         # Newton's method to refine the closest point
         # We want to minimize ||P(u) - query_point||^2
@@ -215,18 +221,18 @@ class ChordLengthParametricSpline2D:
         closest_point = self.evaluate(np.array([u]))[0]
         return u, closest_point
     
-    def find_closest_point(self, query_point: np.ndarray) -> np.ndarray:
+    def get_sub_spline_params(self, query_point: np.ndarray, num_points: int = 100) -> Tuple[float, float]:
         """
-        Find the closest point on the spline to a given query point.
+        Get the chord-length parameters of the sub-spline defined by the chord-length parameter u_start and u_end.
+        """
+        u_start_idx = self.find_closest_knot(query_point)
+        u_end_idx = min(u_start_idx + num_points, len(self.u_values) - 1)
         
-        Args:
-            query_point: [x, y] coordinates of query point
-            
-        Returns:
-            [x, y] coordinates of closest point on spline
-        """
-        _, closest_point = self.get_closest_point(query_point)
-        return closest_point
+        return np.concatenate([
+            self.spline.spline_x.x[u_start_idx:u_end_idx],
+            self.spline.spline_x.c[u_start_idx:u_end_idx].flatten('F'),
+            self.spline.spline_y.c[u_start_idx:u_end_idx].flatten('F')
+        ])
     
     def get_path_length(self) -> float:
         """Get total path length (actual arc length computed via RK4 integration)."""
