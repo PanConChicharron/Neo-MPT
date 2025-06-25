@@ -24,7 +24,7 @@ class ChordLengthParametricSpline2D:
     The actual path length is computed using RK4 integration for accurate arc length.
     """
     
-    def __init__(self, num_waypoints: int, closed_path: bool = False):
+    def __init__(self, waypoints: np.ndarray, closed_path: bool = False):
         """
         Initialize the chord-length parameterized spline with waypoints.
         
@@ -36,22 +36,12 @@ class ChordLengthParametricSpline2D:
         self.spline = None
         self.path_length = None
         self.u_values = None  # Chord-length parameters
-        
-    def set_waypoints(self, waypoints: np.ndarray):
-        """
-        Set the waypoints for the spline.
-        
-        Args:
-            waypoints: Array of shape (N, 2) containing [x, y] coordinates
-        """        
-        if waypoints.shape[1] != 2:
-            raise ValueError("Waypoints must be of shape (N, 2) for [x, y] coordinates")
-        
+                
         self.waypoints = waypoints
         
         self._parameterize_waypoints()
         self._create_spline()
-    
+
     def _parameterize_waypoints(self):
         """Parameterize waypoints using cumulative chord lengths."""
         # Calculate cumulative distance along waypoints
@@ -146,13 +136,13 @@ class ChordLengthParametricSpline2D:
             'path_length': self.path_length
         }
     
-    def find_closest_knot(self, query_point: np.ndarray) -> float:
+    def find_closest_knot_index(self, query_point: np.ndarray) -> float:
         """
         Find the closest knot to a given query point.
         """
         waypoint_distances = np.linalg.norm(self.waypoints - query_point, axis=1)
         min_waypoint_idx = np.argmin(waypoint_distances)
-        return self.u_values[min_waypoint_idx]
+        return min_waypoint_idx
     
     def find_closest_point(self, query_point: np.ndarray) -> Tuple[float, np.ndarray]:
         """
@@ -221,17 +211,80 @@ class ChordLengthParametricSpline2D:
         closest_point = self.evaluate(np.array([u]))[0]
         return u, closest_point
     
-    def get_sub_spline_params(self, query_point: np.ndarray, num_points: int = 100) -> Tuple[float, float]:
+    def get_sub_spline_parameters(self, query_point: np.ndarray, num_points: int = 100) -> np.ndarray:
         """
         Get the chord-length parameters of the sub-spline defined by the chord-length parameter u_start and u_end.
         """
-        u_start_idx = self.find_closest_knot(query_point)
-        u_end_idx = min(u_start_idx + num_points, len(self.u_values) - 1)
+        # Find the closest knot index but implement gradual windowing to avoid discontinuous parameter changes
+        closest_knot_idx = self.find_closest_knot_index(query_point)
         
+        # Use a more conservative windowing approach - only advance the window when we're well past the current start
+        # This prevents sudden parameter jumps that cause QP solver failures
+        if not hasattr(self, '_current_window_start'):
+            self._current_window_start = 0
+        
+        # Only advance the window if we're significantly ahead (e.g., 25% through the current window)
+        window_advance_threshold = max(1, num_points // 4)
+        if closest_knot_idx >= self._current_window_start + window_advance_threshold:
+            # Gradually advance the window, but not more than a few steps at a time
+            max_advance = min(3, closest_knot_idx - self._current_window_start)
+            self._current_window_start = min(self._current_window_start + max_advance, 
+                                           len(self.u_values) - num_points)
+        
+        u_start_idx = max(0, self._current_window_start)
+        
+        knot_vector = self.spline.spline_x.x
+        coeffs_x_flipped = np.flip(self.spline.spline_x.c, axis=0)
+        coeffs_y_flipped = np.flip(self.spline.spline_y.c, axis=0)
+        
+        # Calculate how many knots and coefficients we can take from the original spline
+        available_knots = len(knot_vector) - u_start_idx
+        available_coeffs = coeffs_x_flipped.shape[1] - u_start_idx
+        
+        # Always return exactly num_points knots and num_points-1 coefficient segments
+        if available_knots >= num_points:
+            # We have enough knots - just slice
+            selected_knots = knot_vector[u_start_idx:u_start_idx + num_points]
+        else:
+            # Not enough knots - take what we have and pad with extrapolated values
+            existing_knots = knot_vector[u_start_idx:]
+            needed_knots = num_points - available_knots
+            
+            # Extrapolate with constant spacing
+            if len(existing_knots) >= 2:
+                spacing = existing_knots[-1] - existing_knots[-2]
+                extrapolated = [existing_knots[-1] + i * spacing for i in range(1, needed_knots + 1)]
+            else:
+                # Fallback: unit spacing
+                extrapolated = [existing_knots[-1] + i for i in range(1, needed_knots + 1)]
+            
+            selected_knots = np.concatenate([existing_knots, extrapolated])
+        
+        # Handle coefficients (we need num_points - 1 coefficient segments)
+        needed_coeffs = num_points - 1
+        if available_coeffs >= needed_coeffs:
+            # We have enough coefficients - just slice
+            selected_coeffs_x = coeffs_x_flipped[:, u_start_idx:u_start_idx + needed_coeffs]
+            selected_coeffs_y = coeffs_y_flipped[:, u_start_idx:u_start_idx + needed_coeffs]
+        else:
+            # Not enough coefficients - take what we have and pad
+            existing_coeffs_x = coeffs_x_flipped[:, u_start_idx:]
+            existing_coeffs_y = coeffs_y_flipped[:, u_start_idx:]
+            missing_coeffs = needed_coeffs - available_coeffs
+            
+            # Repeat the last coefficient
+            last_coeff_x = existing_coeffs_x[:, -1:]
+            last_coeff_y = existing_coeffs_y[:, -1:]
+            padded_coeffs_x = np.repeat(last_coeff_x, missing_coeffs, axis=1)
+            padded_coeffs_y = np.repeat(last_coeff_y, missing_coeffs, axis=1)
+            
+            selected_coeffs_x = np.concatenate([existing_coeffs_x, padded_coeffs_x], axis=1)
+            selected_coeffs_y = np.concatenate([existing_coeffs_y, padded_coeffs_y], axis=1)
+
         return np.concatenate([
-            self.spline.spline_x.x[u_start_idx:u_end_idx],
-            self.spline.spline_x.c[u_start_idx:u_end_idx].flatten('F'),
-            self.spline.spline_y.c[u_start_idx:u_end_idx].flatten('F')
+            selected_knots,
+            selected_coeffs_x.flatten('F'),
+            selected_coeffs_y.flatten('F')
         ])
     
     def get_path_length(self) -> float:

@@ -154,20 +154,16 @@ class MPCController:
         # Use numerical bounds for non-parametric constraints
         # Parametric bounds (u_min, u_max, path_length) will be handled via constraint functions
         ocp.constraints.lbx = np.array([
-            -1e6,                    # s: will be constrained via constraint function
-            -1e6,                    # u: will be constrained via constraint function  
             -1.0,                    # e_y: relaxed lateral error bounds
             -np.pi/3,                # e_ψ: heading error bounds
             constraints['velocity_min']  # v: velocity bounds
         ])
         ocp.constraints.ubx = np.array([
-            1e6,                     # s: will be constrained via constraint function
-            1e6,                     # u: will be constrained via constraint function
             1.0,                     # e_y: relaxed lateral error bounds
             np.pi/3,                 # e_ψ: heading error bounds
             constraints['velocity_max']  # v: velocity bounds
         ])
-        ocp.constraints.idxbx = np.array([0, 1, 2, 3, 4])
+        ocp.constraints.idxbx = np.array([2, 3, 4])
         
         # Add parametric constraint functions for s, u bounds
         # Constraint: 0 <= s <= path_length
@@ -309,8 +305,3 @@ class MPCController:
     
         
         return result
-    
-    def update_waypoints(self, waypoints: np.ndarray):
-        """Update waypoints and recompute spline parameters."""        
-        # Update spline parameters
-        self.spline_dynamics.update_waypoints(waypoints)

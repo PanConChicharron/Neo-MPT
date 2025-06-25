@@ -18,7 +18,7 @@ class SplineCurvilinearPath(ChordLengthParametricSpline2D):
     provides methods to work with both 'u' (chord-length) and 's' (arc-length).
     """
     
-    def __init__(self, num_waypoints: int, closed_path: bool = False):
+    def __init__(self, waypoints: np.ndarray, closed_path: bool = False):
         """
         Initialize curvilinear coordinate system with waypoints.
         
@@ -26,16 +26,7 @@ class SplineCurvilinearPath(ChordLengthParametricSpline2D):
             waypoints: Array of shape (N, 2) containing [x, y] coordinates
             closed_path: Whether the path should be closed
         """
-        super().__init__(num_waypoints, closed_path)
-    
-    def set_waypoints(self, waypoints: np.ndarray):
-        """
-        Set the waypoints for the spline.
-        
-        Args:
-            waypoints: Array of shape (N, 2) containing [x, y] coordinates
-        """
-        super().set_waypoints(waypoints)
+        super().__init__(waypoints, closed_path)
     
     def cartesian_to_curvilinear(self, point: np.ndarray) -> Tuple[float, float]:
         """

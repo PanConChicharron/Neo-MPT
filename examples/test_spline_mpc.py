@@ -36,13 +36,10 @@ def run_simulation(path_type="curved"):
     else:
         raise ValueError("Invalid path type. Use 'straight', 'curved', 'racetrack', 'challenging', or 'both'.")
         
-    global_waypoints = waypoints  # Store global waypoints
-    
     # Debug plot spline and derivatives
     # plot_spline_debug(spline)
     
-    spline_curvilinear_path = SplineCurvilinearPath(len(waypoints), closed_path=False)
-    spline_curvilinear_path.set_waypoints(waypoints)
+    spline_curvilinear_path = SplineCurvilinearPath(waypoints, closed_path=False)
     
     # Create vehicle model
     vehicle_model = VehicleModel(
@@ -55,9 +52,11 @@ def run_simulation(path_type="curved"):
         max_velocity=20.0,
         min_velocity=-20.0        # Allow very slow speeds to prevent infeasibility
     )
+
+    num_waypoints = 20# len(waypoints)
     
     # Create spline path dynamics
-    spline_dynamics = CubicSplinePathDynamics(vehicle_model, len(waypoints))
+    spline_dynamics = CubicSplinePathDynamics(vehicle_model, num_waypoints)
     
     # Set cost weights (must be done before set_path)
     state_weights = np.array([1e0, 0.0, 1e2, 1e-1, 1e-1])  # [s, u, e_y, e_ψ, v] - velocity weight = 0.0
@@ -96,6 +95,7 @@ def run_simulation(path_type="curved"):
     # Initialize arrays to store results
     states = np.zeros((n_steps + 1, 5))
     inputs = np.zeros((n_steps, 2))
+    cartesian_states = np.zeros((n_steps + 1, 2))
     solve_times = np.zeros(n_steps)  # Track MPC solve times
     states[0] = initial_state
 
@@ -124,7 +124,8 @@ def run_simulation(path_type="curved"):
             break
         
         # Get current position
-        current_pos = spline_curvilinear_path.curvilinear_to_cartesian(states[step][1], states[step][0])[:2]
+        current_pos = spline_curvilinear_path.curvilinear_to_cartesian(states[step][1], states[step][2])[:2]
+        cartesian_states[step] = current_pos
         
         # Check if coordinate transformation is failing (position stuck or invalid)
         if step > 0:
@@ -139,14 +140,9 @@ def run_simulation(path_type="curved"):
         
         # Update spline parameters only for non-racetrack paths
         # For racetrack and challenging track, we use the full closed-loop path throughout
-        if path_type not in ["racetrack", "challenging"]:
-            # Get local waypoints
-            local_waypoints = get_local_waypoints(global_waypoints, current_pos)
-            # Update spline parameters
-            mpc.update_waypoints(local_waypoints)
-            # Update parameters after waypoints change
-            parameters = spline_dynamics.get_spline_parameters_vector()    
-            parameters = np.concatenate((parameters, [spline_curvilinear_path.u_values[0], spline_curvilinear_path.u_values[-1], spline_curvilinear_path.path_length]))
+        # Update parameters after waypoints change
+        sub_spline_parameters = spline_curvilinear_path.get_sub_spline_parameters(current_pos, num_waypoints)
+        parameters = np.concatenate((sub_spline_parameters, [spline_curvilinear_path.u_values[0], spline_curvilinear_path.u_values[-1], spline_curvilinear_path.path_length]))
     
         
         lookahead_distance = 25.0
@@ -229,7 +225,7 @@ def run_simulation(path_type="curved"):
             print(f"✅ MPC solver is faster than real-time")
     
     # Plot results with timing information
-    plot_results_with_timing(states, inputs, solve_times, dt, spline_curvilinear_path)
+    plot_results(states, inputs, solve_times, dt, spline_curvilinear_path, cartesian_states)
     
     return {
         'states': states,
@@ -237,7 +233,7 @@ def run_simulation(path_type="curved"):
         'solve_times': solve_times
     }
 
-def plot_results_with_timing(states, inputs, solve_times, dt, spline_curvilinear_path):
+def plot_results(states, inputs, solve_times, dt, spline_curvilinear_path, cartesian_states):
     """Plot simulation results including MPC timing information."""
     # Create time vector
     t = np.arange(len(states)) * dt
@@ -251,14 +247,20 @@ def plot_results_with_timing(states, inputs, solve_times, dt, spline_curvilinear
     u_values = np.linspace(0, spline_curvilinear_path.chord_length, 1000)
     path_points = np.array([spline_curvilinear_path.curvilinear_to_cartesian(u, 0) for u in u_values])
     axs[0, 0].plot(path_points[:, 0], path_points[:, 1], 'b-', label='Reference Path')
+    axs[0, 0].plot(cartesian_states[:, 0], cartesian_states[:, 1], 'r-', label='Vehicle Trajectory')
     
+    
+    # Plot vehicle trajectory
+    vehicle_points = np.array([spline_curvilinear_path.curvilinear_to_cartesian(state[1], state[2])[:2] for state in states])
+    axs[0, 0].plot(vehicle_points[:, 0], vehicle_points[:, 1], 'r-', label='Vehicle')
+
     # Plot vehicle trajectory
     vehicle_points = np.array([spline_curvilinear_path.curvilinear_to_cartesian(state[1], state[2])[:2] for state in states])
     axs[0, 0].plot(vehicle_points[:, 0], vehicle_points[:, 1], 'r-', label='Vehicle')
     
     # Mark initial and final poses
     initial_state = states[0]
-    initial_pos = vehicle_points[0]
+    initial_pos = cartesian_states[0]
     initial_heading = spline_curvilinear_path.get_heading(initial_state[0])
     arrow_length = 2.0
     initial_dx = arrow_length * np.cos(initial_heading)
@@ -268,7 +270,7 @@ def plot_results_with_timing(states, inputs, solve_times, dt, spline_curvilinear
     axs[0, 0].plot(initial_pos[0], initial_pos[1], 'go', markersize=8, label='Start')
     
     final_state = states[-1]
-    final_pos = vehicle_points[-1]
+    final_pos = cartesian_states[-1]
     final_heading = spline_curvilinear_path.get_heading(final_state[0])
     final_dx = arrow_length * np.cos(final_heading)
     final_dy = arrow_length * np.sin(final_heading)
@@ -416,12 +418,6 @@ def plot_results_with_timing(states, inputs, solve_times, dt, spline_curvilinear
     
     plt.tight_layout()
     plt.show()
-
-def plot_results(states, inputs, dt, spline_curvilinear_path):
-    """Plot simulation results - wrapper for backward compatibility."""
-    # Create dummy solve times array for backward compatibility
-    solve_times = np.zeros(len(inputs))
-    plot_results_with_timing(states, inputs, solve_times, dt, spline_curvilinear_path)
 
 def run_both_tests():
     """Run both curved and straight-line tests for comparison."""
