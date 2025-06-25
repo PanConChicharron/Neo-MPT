@@ -236,8 +236,8 @@ class MPCController:
         
         # Extract reference trajectory data
         # Handle both old 's_values' and new 'u_values' naming for backward compatibility
-        trajectory_params = reference_trajectory.get('u_values', reference_trajectory.get('s_values', []))
-        velocities = reference_trajectory.get('velocities', [10.0] * len(trajectory_params))
+        trajectory_params = reference_trajectory.get('u_values', reference_trajectory.get('s_values'))
+        velocities = reference_trajectory.get('velocities')
         
         # Set reference for each node in the horizon (excluding terminal node)
         for i in range(self.N):  # Only go to N-1, not N+1
@@ -247,7 +247,7 @@ class MPCController:
                 trajectory_params[i],  # u (chord-length parameter) - approximation
                 0.0,                   # e_y (lateral error)
                 0.0,                   # e_ψ (heading error)
-                velocities[i] if i < len(velocities) else 10.0,  # v (velocity)
+                velocities[i] if i < len(velocities) else 0.0,  # v (velocity)
                 0.0,                   # delta (steering reference)
                 0.0                    # a (acceleration reference)
             ])
@@ -260,7 +260,7 @@ class MPCController:
                 trajectory_params[-1],
                 0.0,
                 0.0,
-                velocities[-1] if len(velocities) > 0 else 10.0
+                velocities[-1] if len(velocities) > 0 else 0.0
             ])
             self.solver.set(self.N, "y_ref", yref_e_vector)
         
