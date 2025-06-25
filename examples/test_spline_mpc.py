@@ -59,9 +59,9 @@ def run_simulation(path_type="curved"):
     spline_dynamics = CubicSplinePathDynamics(vehicle_model, num_waypoints)
     
     # Set cost weights (must be done before set_path)
-    state_weights = np.array([1e0, 0.0, 1e2, 1e-1, 1e-2])  # [s, u, e_y, e_ψ, v] - velocity weight = 0.0
-    input_weights = np.array([5, 1e2])  # [delta, a] - very low acceleration penalty
-    terminal_state_weights = 2 * state_weights  # [s, u, e_y, e_ψ, v] - terminal velocity weight = 0.0
+    state_weights = np.array([1e0, 0.0, 1e2, 1e-1, 1e-2])  # [s, u, e_y, e_ψ, v]
+    input_weights = np.array([5, 1e2])  # [delta, a]
+    terminal_state_weights = 2 * state_weights  # [s, u, e_y, e_ψ, v]
 
     # Create MPC controller with more conservative settings
     mpc = MPCController(
