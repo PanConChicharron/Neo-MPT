@@ -36,11 +36,6 @@ class CubicSplinePathDynamics(CurvilinearDynamics):
         self.n_segments = self.num_waypoints - 1
         self.n_states = 5  # [s, u, e_y, e_ψ, v]
 
-        # Store as CasADi parameters for symbolic computation
-        self.knots_ca = ca.SX.sym('knots', self.num_waypoints)
-        self.coeffs_x_ca = ca.SX.sym('coeffs_x', 4, self.n_segments)
-        self.coeffs_y_ca = ca.SX.sym('coeffs_y', 4, self.n_segments)
-
         # Create symbolic spline functions
         self._create_symbolic_spline_functions()
         
@@ -161,7 +156,7 @@ class CubicSplinePathDynamics(CurvilinearDynamics):
         self.input = ca.vertcat(self.delta, self.a)
         
         # Create the flattened parameter vector for symbolic computation
-        n_knots = self.knots_ca.shape[0]
+        n_knots = self.num_waypoints
 
         n_coeffs_x = 4 * self.n_segments
         n_coeffs_y = 4 * self.n_segments
