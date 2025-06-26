@@ -31,10 +31,15 @@
 # author: Daniel Kloeser
 
 import time, os
+import sys
 import numpy as np
-from acados_settings_dev import *
-from plotFcn import *
-from tracks.readDataFcn import getTrack
+
+# Add the parent directory to Python path to import the package
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from MPC_race_cars_simplified.acados_settings_dev import *
+from MPC_race_cars_simplified.plotFcn import *
+from MPC_race_cars_simplified.tracks.readDataFcn import getTrack
 import matplotlib.pyplot as plt
 
 """
@@ -46,9 +51,9 @@ The simulation starts at s=-2m until one round is completed(s=8.71m). The beginn
 track = "LMS_Track.txt"
 [Sref, _, _, _, _] = getTrack(track)
 
-Tf = 1.0  # prediction horizon
+Tf = 5.0  # prediction horizon
 N = 50  # number of discretization steps
-T = 10.00  # maximum simulation time[s]
+T = 50.00  # maximum simulation time[s]
 sref_N = 3  # reference for final reference progress
 
 # load model

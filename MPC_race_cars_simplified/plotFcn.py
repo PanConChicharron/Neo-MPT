@@ -30,8 +30,8 @@
 
 # author: Daniel Kloeser
 
-from tracks.readDataFcn import getTrack
-from time2spatial import transformProj2Orig,transformOrig2Proj
+from MPC_race_cars_simplified.tracks.readDataFcn import getTrack
+from MPC_race_cars_simplified.time2spatial import transformProj2Orig,transformOrig2Proj
 from matplotlib import cm
 import matplotlib.pyplot as plt
 import numpy as np

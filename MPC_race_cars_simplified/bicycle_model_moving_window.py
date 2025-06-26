@@ -31,7 +31,7 @@
 # author: Daniel Kloeser
 
 from casadi import *
-from tracks.readDataFcn import getTrack
+from MPC_race_cars_simplified.tracks.readDataFcn import getTrack
 import numpy as np
 
 
