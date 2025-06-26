@@ -109,7 +109,7 @@ def plotRes(simX,simU,t):
     plt.plot(t, simX[:,:])
     plt.ylabel('x')
     plt.xlabel('t')
-    plt.legend(['s','n','alpha','v','D','delta'])
+    plt.legend(['s','eY','e_ψ','v','D','delta'])
     plt.grid(True)
 
 def plotalat(simX,simU,constraint,t):

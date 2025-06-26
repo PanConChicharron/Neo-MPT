@@ -137,12 +137,12 @@ def bicycle_model(track="LMS_Track.txt"):
     constraint.along_max = 4  # maximum lateral force [m/s^2]
 
     # Define initial conditions
-    model.x0 = np.array([-2, 0, 0, 0, 0, 0])
+    model.x0 = np.array([0, 0, 0, 0, 0, 0])
 
     # define constraints struct
     constraint.alat = Function("a_lat", [x, u], [a_lat])
     constraint.pathlength = pathlength
-    constraint.expr = vertcat(a_long, a_lat, eY, D, delta)
+    constraint.expr = vertcat(a_long, a_lat)
 
     # Define model struct
     params = types.SimpleNamespace()

@@ -111,11 +111,26 @@ def acados_settings(Tf, N, track_file):
     ocp.cost.yref_e = np.array([0, 0, 0, 0, 0, 0])
 
     # setting constraints
-    ocp.constraints.lbx = np.array([-12])
-    ocp.constraints.ubx = np.array([12])
-    ocp.constraints.idxbx = np.array([1])
-    ocp.constraints.lbu = np.array([model.dthrottle_min, model.ddelta_min])
-    ocp.constraints.ubu = np.array([model.dthrottle_max, model.ddelta_max])
+    ocp.constraints.lbx = np.array([
+        model.eY_min,
+        model.throttle_min,
+        model.delta_min,
+    ])
+    ocp.constraints.ubx = np.array([
+        model.eY_max,
+        model.throttle_max,
+        model.delta_max,
+    ])
+    ocp.constraints.idxbx = np.array([1, 4, 5])
+
+    ocp.constraints.lbu = np.array([
+        model.dthrottle_min,
+        model.ddelta_min
+    ])
+    ocp.constraints.ubu = np.array([
+        model.dthrottle_max,
+        model.ddelta_max
+    ])
     ocp.constraints.idxbu = np.array([0, 1])
 
     ocp.constraints.lsbx = np.zeros([nsbx])
@@ -126,18 +141,12 @@ def acados_settings(Tf, N, track_file):
         [
             constraint.along_min,
             constraint.alat_min,
-            model.eY_min,
-            model.throttle_min,
-            model.delta_min,
         ]
     )
     ocp.constraints.uh = np.array(
         [
             constraint.along_max,
             constraint.alat_max,
-            model.eY_max,
-            model.throttle_max,
-            model.delta_max,
         ]
     )
     ocp.constraints.lsh = np.zeros(nsh)
