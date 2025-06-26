@@ -52,16 +52,11 @@ def bicycle_model(track="LMS_Track.txt"):
     kapparef = np.append(kapparef[length - 80 : length - 1], kapparef)
 
     # compute spline interpolations
-    kapparef_s = interpolant("kapparef_s", "bspline", [s0], kapparef)
-
+    kapparef_s = interpolant("kapparef_s", "bspline", [s0], kapparef)    
     ## Race car parameters
     m = 0.043
     lf = 0.02
     lr = 0.020
-    Cm1 = 0.28
-    Cm2 = 0.05
-    Cr0 = 0.011
-    Cr2 = 0.006
 
     ## CasADi Model
     # set up states & controls
@@ -133,10 +128,6 @@ def bicycle_model(track="LMS_Track.txt"):
     params.m = m
     params.lf = lf
     params.lr = lr
-    params.Cm1 = Cm1
-    params.Cm2 = Cm2
-    params.Cr0 = Cr0
-    params.Cr2 = Cr2
     model.f_impl_expr = xdot - f_expl
     model.f_expl_expr = f_expl
     model.x = x
