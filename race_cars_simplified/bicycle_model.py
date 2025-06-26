@@ -56,8 +56,8 @@ def bicycle_model(track="LMS_Track.txt"):
 
     ## Race car parameters
     m = 0.043
-    C1 = 0.5
-    C2 = 15.5
+    lf = 0.02
+    lr = 0.020
     Cm1 = 0.28
     Cm2 = 0.05
     Cr0 = 0.011
@@ -72,9 +72,9 @@ def bicycle_model(track="LMS_Track.txt"):
     x = vertcat(s, eY, e_ψ, v)
 
     # controls
-    D = MX.sym("D")
+    a = MX.sym("a")
     delta = MX.sym("delta")
-    u = vertcat(D, delta)
+    u = vertcat(a, delta)
 
     # xdot
     sdot = MX.sym("sdot")
@@ -89,30 +89,29 @@ def bicycle_model(track="LMS_Track.txt"):
     # parameters
     p = vertcat([])
 
-    beta = C1 * delta
-    kappa = C2 * delta
+    beta = atan(lr * tan(delta) / (lf + lr))
+    kappa = sin(beta) / (lf + lr)
 
     # dynamics
-    Fxd = (Cm1 - Cm2 * v) * D - Cr2 * v * v - Cr0 * tanh(5 * v)
     sdot = (v * cos(e_ψ + beta)) / (1 - kapparef_s(s) * eY)
     f_expl = vertcat(
         sdot,
         v * sin(e_ψ + beta),
         v * kappa - kapparef_s(s) * sdot,
-        Fxd / m,
+        a,
     )
 
     # constraint on forces
     a_lat = v * v * kappa
-    a_long = Fxd / m
+    a_long = a
 
     # Model bounds
     model.eY_min = -0.12  # width of the track [m]
     model.eY_max = 0.12  # width of the track [m]
 
     # input bounds
-    model.throttle_min = -1.0
-    model.throttle_max = 1.0
+    model.a_min = -4.0
+    model.a_max = 4.0
 
     model.delta_min = -0.40  # minimum steering angle [rad]
     model.delta_max = 0.40  # maximum steering angle [rad]
@@ -121,21 +120,19 @@ def bicycle_model(track="LMS_Track.txt"):
     constraint.alat_min = -4  # maximum lateral force [m/s^2]
     constraint.alat_max = 4  # maximum lateral force [m/s^1]
 
-    constraint.along_min = -4  # maximum lateral force [m/s^2]
-    constraint.along_max = 4  # maximum lateral force [m/s^2]
-
     # Define initial conditions
     model.x0 = np.array([0, 0, 0, 0])
 
     # define constraints struct
     constraint.alat = Function("a_lat", [x, u], [a_lat])
     constraint.pathlength = pathlength
-    constraint.expr = vertcat(a_long, a_lat)
+    constraint.expr = vertcat(a_lat)
 
     # Define model struct
     params = types.SimpleNamespace()
-    params.C1 = C1
-    params.C2 = C2
+    params.m = m
+    params.lf = lf
+    params.lr = lr
     params.Cm1 = Cm1
     params.Cm2 = Cm2
     params.Cr0 = Cr0

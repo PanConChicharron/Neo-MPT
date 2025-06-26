@@ -101,7 +101,7 @@ def plotRes(simX,simU,t):
     plt.step(t, simU[:,0], color='r')
     plt.step(t, simU[:,1], color='g')
     plt.title('closed-loop simulation')
-    plt.legend(['D','delta'])
+    plt.legend(['a','delta'])
     plt.ylabel('u')
     plt.xlabel('t')
     plt.grid(True)
@@ -109,7 +109,7 @@ def plotRes(simX,simU,t):
     plt.plot(t, simX[:,:])
     plt.ylabel('x')
     plt.xlabel('t')
-    plt.legend(['s','eY','e_ψ','v','D','delta'])
+    plt.legend(['s','eY','e_ψ','v','a','delta'])
     plt.grid(True)
 
 def plotalat(simX,simU,constraint,t):
