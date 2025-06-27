@@ -13,7 +13,12 @@ class SymbolicCubicSpline:
         self.n_segments = n_points - 1
 
         self.knots = ca.SX.sym('knots', n_points)
-        self.coefficients = ca.SX.sym('coefficients', 4, (n_points-1))  # a,b,c,d for each segment
+        self.a = ca.SX.sym('a', n_points-1)
+        self.b = ca.SX.sym('b', n_points-1)
+        self.c = ca.SX.sym('c', n_points-1)
+        self.d = ca.SX.sym('d', n_points-1)
+
+        self.coefficients = ca.vertcat(self.a, self.b, self.c, self.d)
 
         self.x_val = 0
         self.dx_du = 0
@@ -38,7 +43,7 @@ class SymbolicCubicSpline:
             
             # Cubic polynomial: f(t) = a*t^3 + b*t^2 + c*t + d
             # Note: scipy stores coefficients in reverse order [d, c, b, a]
-            d, c, b, a = self.coefficients[0,i], self.coefficients[1,i], self.coefficients[2,i], self.coefficients[3,i]
+            d, c, b, a = self.d[i], self.c[i], self.b[i], self.a[i]
             
             # Position
             x_seg = a*t**3 + b*t**2 + c*t + d
@@ -50,9 +55,9 @@ class SymbolicCubicSpline:
             d2x_seg = 6*a*t + 2*b
             
             # Use conditional assignment
-            self.x_val += ca.if_else(condition, x_seg, self.x_val)
-            self.dx_du += ca.if_else(condition, dx_seg, self.dx_du)
-            self.d2x_du2 += ca.if_else(condition, d2x_seg, self.d2x_du2)
+            self.x_val = ca.if_else(condition, x_seg, self.x_val)
+            self.dx_du = ca.if_else(condition, dx_seg, self.dx_du)
+            self.d2x_du2 = ca.if_else(condition, d2x_seg, self.d2x_du2)
 
     def get_symbolic_spline(self):
         """Get the symbolic spline."""

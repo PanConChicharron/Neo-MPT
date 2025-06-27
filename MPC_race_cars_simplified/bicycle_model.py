@@ -47,13 +47,12 @@ def bicycle_model(track="LMS_Track.txt", n_points=20):
     [s0, _, _, _, kapparef] = getTrack(track)
     length = len(s0)
     pathlength = s0[-1]
+
     # copy loop to beginning and end
     # s0 = np.append(s0, [s0[length - 1] + s0[1:length]])
     # kapparef = np.append(kapparef, kapparef[1:length])
     # s0 = np.append([-s0[length - 2] + s0[length - 81 : length - 2]], s0)
     # kapparef = np.append(kapparef[length - 80 : length - 1], kapparef)
-
-    # import pdb; pdb.set_trace()
 
     # compute spline interpolations
     kapparef_s = interpolant("kapparef_s", "bspline", [s0], kapparef)
@@ -73,8 +72,8 @@ def bicycle_model(track="LMS_Track.txt", n_points=20):
 
     symbolic_clothoid_spline = SymbolicCubicSpline(n_points=n_points, u=s)
 
-    kapparef_s = kapparef_s(s)
-    # kapparef_s = symbolic_clothoid_spline.get_symbolic_spline()
+    # kapparef_s = kapparef_s(s)
+    kapparef_s = symbolic_clothoid_spline.get_symbolic_spline()
 
     # controls
     a = SX.sym("a")

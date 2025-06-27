@@ -8,7 +8,7 @@ class ClothoidSpline:
         self.track_file = track_file
         [s0, _, _, _, kapparef] = getTrack(track_file)
 
-        self.spline = CubicSpline(s0, kapparef, 3)
+        self.spline = CubicSpline(s0, kapparef)
         self.knots = self.spline.x
         self.coefficients = self.spline.c
 
@@ -28,8 +28,10 @@ class ClothoidSpline:
         sub_coefficients = self.coefficients[:, closest_knot:min(closest_knot+window_size-1, np.shape(self.coefficients)[1])]
 
         if len(sub_knots) < window_size:
+            # import pdb; pdb.set_trace()
+            
             sub_knots = np.append(sub_knots, np.ones(window_size - len(sub_knots)) * sub_knots[-1])
-            sub_coefficients = np.append(sub_coefficients, np.zeros((4, window_size - len(sub_coefficients))), axis=1)
+            sub_coefficients = np.append(sub_coefficients, np.zeros((4, window_size -1 - np.shape(sub_coefficients)[1])), axis=1)
 
         return sub_knots, sub_coefficients
 

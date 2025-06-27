@@ -35,14 +35,11 @@ import sys
 import numpy as np
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from Utils.clothoid_spline import ClothoidSpline
-
-# Add the parent directory to Python path to import the package
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from MPC_race_cars_simplified.acados_settings_dev import *
 from MPC_race_cars_simplified.plotFcn import *
 from MPC_race_cars_simplified.tracks.readDataFcn import getTrack
+from Utils.clothoid_spline import ClothoidSpline
 import matplotlib.pyplot as plt
 
 """
@@ -59,7 +56,7 @@ N = 50  # number of discretization steps
 T = 50.00  # maximum simulation time[s]
 sref_N = 3  # reference for final reference progress
 
-num_points = 256
+num_points = 50
 # load model
 constraint, model, acados_solver = acados_settings(Tf, N, track, num_points)
 
@@ -85,13 +82,12 @@ acados_solver.set(0, "ubx", x0)
 
 clothoid_spline = ClothoidSpline("../../MPC_race_cars_simplified/tracks/LMS_Track.txt")
 
-# Extract sub-spline for the current position
-sub_knots, sub_coefficients = clothoid_spline.get_sub_spline_knots_and_coefficients_from_window_size(x0[0], num_points)
-parameters = np.concatenate((sub_knots, sub_coefficients.flatten('C')), axis=0)
-
 # simulate
 for i in range(Nsim):
     # update reference
+    # Extract sub-spline for the current position
+    sub_knots, sub_coefficients = clothoid_spline.get_sub_spline_knots_and_coefficients_from_window_size(x0[0], num_points)
+    parameters = np.concatenate((sub_knots, (sub_coefficients.flatten())), axis=0)
     sref = s0 + sref_N
     for j in range(N):
         yref = np.array([s0 + (sref - s0) * j / N, 0, 0, 5.0, 0, 0])
