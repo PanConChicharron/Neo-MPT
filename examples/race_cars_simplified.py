@@ -65,12 +65,19 @@ nu = model.u.rows()
 ny = nx + nu
 Nsim = int(T * N / Tf)
 
+
+# Define initial conditions
+x0 = np.array([0, 0, 0, 0])
+
 # initialize data structs
 simX = np.zeros((Nsim, nx))
 simU = np.zeros((Nsim, nu))
-s0 = model.x0[0]
+s0 = x0[0]
 tcomp_sum = 0
 tcomp_max = 0
+
+acados_solver.set(0, "lbx", x0)
+acados_solver.set(0, "ubx", x0)
 
 # simulate
 for i in range(Nsim):

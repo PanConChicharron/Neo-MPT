@@ -33,8 +33,10 @@
 from casadi import *
 from MPC_race_cars_simplified.tracks.readDataFcn import getTrack
 
+from Utils.symbolic_cubic_spline import SymbolicCubicSpline
 
-def bicycle_model(track="LMS_Track.txt"):
+
+def bicycle_model(track="LMS_Track.txt", n_points=20):
     # define structs
     constraint = types.SimpleNamespace()
     model = types.SimpleNamespace()
@@ -53,6 +55,9 @@ def bicycle_model(track="LMS_Track.txt"):
 
     # compute spline interpolations
     kapparef_s = interpolant("kapparef_s", "bspline", [s0], kapparef)    
+
+    symbolic_clothoid_spline = SymbolicCubicSpline(n_points=n_points)
+
     ## Race car parameters
     m = 0.043
     lf = 0.02
@@ -60,29 +65,29 @@ def bicycle_model(track="LMS_Track.txt"):
 
     ## CasADi Model
     # set up states & controls
-    s = MX.sym("s")
-    eY = MX.sym("eY")
-    e_ψ = MX.sym("e_ψ")
-    v = MX.sym("v")
+    s = SX.sym("s")
+    eY = SX.sym("eY")
+    e_ψ = SX.sym("e_ψ")
+    v = SX.sym("v")
     x = vertcat(s, eY, e_ψ, v)
 
     # controls
-    a = MX.sym("a")
-    delta = MX.sym("delta")
+    a = SX.sym("a")
+    delta = SX.sym("delta")
     u = vertcat(a, delta)
 
     # xdot
-    sdot = MX.sym("sdot")
-    eYdot = MX.sym("eYdot")
-    e_ψdot = MX.sym("e_ψdot")
-    vdot = MX.sym("vdot")
+    sdot = SX.sym("sdot")
+    eYdot = SX.sym("eYdot")
+    e_ψdot = SX.sym("e_ψdot")
+    vdot = SX.sym("vdot")
     xdot = vertcat(sdot, eYdot, e_ψdot, vdot)
 
     # algebraic variables
     z = vertcat([])
 
     # parameters
-    p = vertcat([])
+    p = symbolic_clothoid_spline.get_parameters()
 
     beta = atan(lr * tan(delta) / (lf + lr))
     kappa = sin(beta) / (lf + lr)
@@ -114,9 +119,6 @@ def bicycle_model(track="LMS_Track.txt"):
     # nonlinear constraint
     constraint.alat_min = -4  # maximum lateral force [m/s^2]
     constraint.alat_max = 4  # maximum lateral force [m/s^1]
-
-    # Define initial conditions
-    model.x0 = np.array([0, 0, 0, 0])
 
     # define constraints struct
     constraint.alat = Function("a_lat", [x, u], [a_lat])

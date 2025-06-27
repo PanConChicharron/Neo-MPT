@@ -149,7 +149,8 @@ def acados_settings(Tf, N, track_file):
     # ocp.constraints.idxsh = np.array(range(nsh))
 
     # set initial condition
-    ocp.constraints.x0 = model.x0
+    ocp.constraints.x0 = np.zeros(nx)
+    ocp.parameter_values = np.zeros(model.p.shape[0])
 
     # set QP solver and integration
     ocp.solver_options.tf = Tf

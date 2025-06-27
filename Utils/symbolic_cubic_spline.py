@@ -10,9 +10,11 @@ class SymbolicCubicSpline:
     def __init__(self, n_points: int):
         """Initialize spline with n_points."""
         self.n_points = n_points
+        self.n_segments = n_points - 1
+
         self.knots = ca.SX.sym('knots', n_points)
-        self.coefficients_x = ca.SX.sym('coeffs_x', 4 * (n_points-1))  # a,b,c,d for each segment
-        self.coefficients_y = ca.SX.sym('coeffs_y', 4 * (n_points-1))  # a,b,c,d for each segment
+        self.coefficients_x = ca.SX.sym('coeffs_x', 4, (n_points-1))  # a,b,c,d for each segment
+        self.coefficients_y = ca.SX.sym('coeffs_y', 4, (n_points-1))  # a,b,c,d for each segment
 
         self.x_val = 0
         self.y_val = 0
@@ -69,6 +71,6 @@ class SymbolicCubicSpline:
     
     def get_parameters(self):
         """Get the parameters of the spline."""
-        return ca.vertcat(self.knots, self.coefficients_x, self.coefficients_y)
+        return ca.vertcat(self.knots, ca.reshape(self.coefficients_x, -1, 1), ca.reshape(self.coefficients_y, -1, 1))
             
         
