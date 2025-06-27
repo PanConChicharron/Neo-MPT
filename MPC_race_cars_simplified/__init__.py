@@ -19,8 +19,6 @@ __license__ = "2-Clause BSD License"
 
 # Import main modules
 from . import bicycle_model
-from . import bicycle_model_moving_window
-from . import acados_settings
 from . import acados_settings_dev
 from . import plotFcn
 from . import time2spatial
@@ -28,7 +26,6 @@ from . import tracks
 
 # Import commonly used functions
 from .bicycle_model import bicycle_model
-from .bicycle_model_moving_window import MovingWindowBicycleModel, bicycle_model_moving_window
 
 __all__ = [
     'bicycle_model',
