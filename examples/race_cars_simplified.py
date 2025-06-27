@@ -34,6 +34,9 @@ import time, os
 import sys
 import numpy as np
 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from Utils.clothoid_spline import ClothoidSpline
+
 # Add the parent directory to Python path to import the package
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -49,15 +52,16 @@ The simulation starts at s=-2m until one round is completed(s=8.71m). The beginn
 """
 
 track = "LMS_Track.txt"
-[Sref, _, _, _, _] = getTrack(track)
+[Sref, _, _, _, kapparef] = getTrack(track)
 
 Tf = 5.0  # prediction horizon
 N = 50  # number of discretization steps
 T = 50.00  # maximum simulation time[s]
 sref_N = 3  # reference for final reference progress
 
+num_points = 256
 # load model
-constraint, model, acados_solver = acados_settings(Tf, N, track)
+constraint, model, acados_solver = acados_settings(Tf, N, track, num_points)
 
 # dimensions
 nx = model.x.rows()
@@ -79,6 +83,12 @@ tcomp_max = 0
 acados_solver.set(0, "lbx", x0)
 acados_solver.set(0, "ubx", x0)
 
+clothoid_spline = ClothoidSpline("../../MPC_race_cars_simplified/tracks/LMS_Track.txt")
+
+# Extract sub-spline for the current position
+sub_knots, sub_coefficients = clothoid_spline.get_sub_spline_knots_and_coefficients_from_window_size(x0[0], num_points)
+parameters = np.concatenate((sub_knots, sub_coefficients), axis=0)
+
 # simulate
 for i in range(Nsim):
     # update reference
@@ -87,6 +97,7 @@ for i in range(Nsim):
         yref = np.array([s0 + (sref - s0) * j / N, 0, 0, 5.0, 0, 0])
         # yref=np.array([1,0,0,1,0,0,0,0])
         acados_solver.set(j, "yref", yref)
+        acados_solver.set(j, "p", parameters)
     yref_N = np.array([sref, 0, 0, 0])
     # yref_N=np.array([0,0,0,0,0,0])
     acados_solver.set(N, "yref", yref_N)

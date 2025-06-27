@@ -1,6 +1,6 @@
 import casadi as ca
 
-from Utils.symbolic_cubic_spline import SymbolicCubicSpline
+from Utils.symbolic_b_spline import SymbolicCubicSpline
 
 class Symbolic2DCubicSpline:
     def __init__(self, n_points: int):

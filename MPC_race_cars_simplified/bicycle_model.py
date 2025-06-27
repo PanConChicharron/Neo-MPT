@@ -33,7 +33,7 @@
 from casadi import *
 from MPC_race_cars_simplified.tracks.readDataFcn import getTrack
 
-from Utils.symbolic_cubic_spline import SymbolicCubicSpline
+from Utils.symbolic_b_spline import SymbolicBSpline
 
 
 def bicycle_model(track="LMS_Track.txt", n_points=20):
@@ -48,18 +48,20 @@ def bicycle_model(track="LMS_Track.txt", n_points=20):
     length = len(s0)
     pathlength = s0[-1]
     # copy loop to beginning and end
-    s0 = np.append(s0, [s0[length - 1] + s0[1:length]])
-    kapparef = np.append(kapparef, kapparef[1:length])
-    s0 = np.append([-s0[length - 2] + s0[length - 81 : length - 2]], s0)
-    kapparef = np.append(kapparef[length - 80 : length - 1], kapparef)
+    # s0 = np.append(s0, [s0[length - 1] + s0[1:length]])
+    # kapparef = np.append(kapparef, kapparef[1:length])
+    # s0 = np.append([-s0[length - 2] + s0[length - 81 : length - 2]], s0)
+    # kapparef = np.append(kapparef[length - 80 : length - 1], kapparef)
+
+    # import pdb; pdb.set_trace()
 
     # compute spline interpolations
     kapparef_s = interpolant("kapparef_s", "bspline", [s0], kapparef)
 
     ## Race car parameters
     m = 0.043
-    lf = 0.02
-    lr = 0.020
+    lf = 0.030
+    lr = 0.010
 
     ## CasADi Model
     # set up states & controls
@@ -69,7 +71,7 @@ def bicycle_model(track="LMS_Track.txt", n_points=20):
     v = SX.sym("v")
     x = vertcat(s, eY, e_ψ, v)    
 
-    symbolic_clothoid_spline = SymbolicCubicSpline(n_points=n_points, u=s)
+    symbolic_clothoid_spline = SymbolicBSpline(n_coeffs=n_points, u=s)
 
     kapparef_s = kapparef_s(s)
     # kapparef_s = symbolic_clothoid_spline.get_symbolic_spline()
@@ -118,8 +120,8 @@ def bicycle_model(track="LMS_Track.txt", n_points=20):
     model.a_min = -4.0
     model.a_max = 4.0
 
-    model.delta_min = -0.40  # minimum steering angle [rad]
-    model.delta_max = 0.40  # maximum steering angle [rad]
+    model.delta_min = -np.pi/4  # minimum steering angle [rad]
+    model.delta_max = np.pi/4  # maximum steering angle [rad]
 
     # nonlinear constraint
     constraint.alat_min = -4  # maximum lateral force [m/s^2]

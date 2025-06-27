@@ -36,12 +36,12 @@ import scipy.linalg
 import numpy as np
 
 
-def acados_settings(Tf, N, track_file):
+def acados_settings(Tf, N, track_file, n_points):
     # create render arguments
     ocp = AcadosOcp()
 
     # export model
-    model, constraint = bicycle_model(track_file)
+    model, constraint = bicycle_model(track_file, n_points)
 
     # define acados ODE
     model_ac = AcadosModel()
@@ -73,11 +73,11 @@ def acados_settings(Tf, N, track_file):
     ocp.solver_options.N_horizon = N
 
     # set cost
-    Q = np.diag([ 1e-1, 2e0, 1e-2, 1e-2])
+    Q = np.diag([ 1e-1, 1e0, 1e-1, 1e-2])
 
     R = np.eye(nu)
     R[0, 0] = 1e-3
-    R[1, 1] = 1e-2
+    R[1, 1] = 5e-2
 
     Qe = 5*Q
 
