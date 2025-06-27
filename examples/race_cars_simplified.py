@@ -84,7 +84,7 @@ for i in range(Nsim):
     # update reference
     sref = s0 + sref_N
     for j in range(N):
-        yref = np.array([s0 + (sref - s0) * j / N, 0, 0, 0, 0, 0])
+        yref = np.array([s0 + (sref - s0) * j / N, 0, 0, 5.0, 0, 0])
         # yref=np.array([1,0,0,1,0,0,0,0])
         acados_solver.set(j, "yref", yref)
     yref_N = np.array([sref, 0, 0, 0])

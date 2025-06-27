@@ -54,9 +54,7 @@ def bicycle_model(track="LMS_Track.txt", n_points=20):
     kapparef = np.append(kapparef[length - 80 : length - 1], kapparef)
 
     # compute spline interpolations
-    kapparef_s = interpolant("kapparef_s", "bspline", [s0], kapparef)    
-
-    symbolic_clothoid_spline = SymbolicCubicSpline(n_points=n_points)
+    kapparef_s = interpolant("kapparef_s", "bspline", [s0], kapparef)
 
     ## Race car parameters
     m = 0.043
@@ -69,7 +67,12 @@ def bicycle_model(track="LMS_Track.txt", n_points=20):
     eY = SX.sym("eY")
     e_ψ = SX.sym("e_ψ")
     v = SX.sym("v")
-    x = vertcat(s, eY, e_ψ, v)
+    x = vertcat(s, eY, e_ψ, v)    
+
+    symbolic_clothoid_spline = SymbolicCubicSpline(n_points=n_points, u=s)
+
+    kapparef_s = kapparef_s(s)
+    # kapparef_s = symbolic_clothoid_spline.get_symbolic_spline()
 
     # controls
     a = SX.sym("a")
@@ -89,15 +92,17 @@ def bicycle_model(track="LMS_Track.txt", n_points=20):
     # parameters
     p = symbolic_clothoid_spline.get_parameters()
 
+    print(p)
+
     beta = atan(lr * tan(delta) / (lf + lr))
     kappa = sin(beta) / (lf + lr)
 
     # dynamics
-    sdot = (v * cos(e_ψ + beta)) / (1 - kapparef_s(s) * eY)
+    sdot = (v * cos(e_ψ + beta)) / (1 - kapparef_s * eY)
     f_expl = vertcat(
         sdot,
         v * sin(e_ψ + beta),
-        v * kappa - kapparef_s(s) * sdot,
+        v * kappa - kapparef_s * sdot,
         a,
     )
 
