@@ -33,7 +33,7 @@
 from casadi import *
 from MPC_race_cars_simplified.tracks.readDataFcn import getTrack
 
-from Utils.symbolic_b_spline import SymbolicBSpline
+from Utils.symbolic_cubic_spline import SymbolicCubicSpline
 
 
 def bicycle_model(track="LMS_Track.txt", n_points=20):
@@ -71,7 +71,7 @@ def bicycle_model(track="LMS_Track.txt", n_points=20):
     v = SX.sym("v")
     x = vertcat(s, eY, e_ψ, v)    
 
-    symbolic_clothoid_spline = SymbolicBSpline(n_coeffs=n_points, u=s)
+    symbolic_clothoid_spline = SymbolicCubicSpline(n_points=n_points, u=s)
 
     kapparef_s = kapparef_s(s)
     # kapparef_s = symbolic_clothoid_spline.get_symbolic_spline()

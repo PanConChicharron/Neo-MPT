@@ -87,7 +87,7 @@ clothoid_spline = ClothoidSpline("../../MPC_race_cars_simplified/tracks/LMS_Trac
 
 # Extract sub-spline for the current position
 sub_knots, sub_coefficients = clothoid_spline.get_sub_spline_knots_and_coefficients_from_window_size(x0[0], num_points)
-parameters = np.concatenate((sub_knots, sub_coefficients), axis=0)
+parameters = np.concatenate((sub_knots, sub_coefficients.flatten('C')), axis=0)
 
 # simulate
 for i in range(Nsim):
