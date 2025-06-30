@@ -47,8 +47,8 @@ The system combines:
 - **Spatial Parameterization**: Track-following using curvilinear coordinates
 
 ### Trajectory Generation
-- **Cubic Splines**: Smooth interpolation between track waypoints
-- **Clothoid Splines**: Advanced spline fitting for racing applications
+- **Cubic Splines**: Symbolic Cubic-Splines for piece-wise references
+- **Clothoid Splines**: Advanced spline fitting for racing applications, in reality this is an implementation of a curve with cubic-spline curvature, so it isn't technically a 'clothoid'
 - **Real-time Adaptation**: Dynamic spline updates based on current position
 
 ### MPC Controller
