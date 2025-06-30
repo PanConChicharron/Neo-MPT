@@ -161,7 +161,6 @@ tmp/
 *.log
 
 # Matplotlib/plotting
-*.png
 *.jpg
 *.jpeg
 *.pdf

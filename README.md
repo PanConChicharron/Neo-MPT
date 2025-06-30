@@ -10,6 +10,16 @@ The system combines:
 - **MPC Controller**: Real-time optimization for trajectory following using acados
 - **Clothoid Splines**: Advanced spline fitting for racing track representation
 
+## Visual Results
+
+### Race Car Trajectory
+![Race Car Trajectory](race_car_trajectory.png)
+*Vehicle trajectory following the racing track with MPC control*
+
+### Progression Analysis
+![Progression](progression.png)
+*Performance metrics and progression analysis over the simulation*
+
 ## Project Structure
 
 ```
