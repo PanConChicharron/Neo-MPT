@@ -18,7 +18,7 @@ The system combines:
 
 ### Progression Analysis
 ![Progression](progression.png)
-*Performance metrics and progression analysis over the simulation*
+*Control Signals and The Progression of States through the lap*
 
 ## Project Structure
 
