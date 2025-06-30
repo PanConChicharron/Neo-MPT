@@ -72,7 +72,6 @@ def bicycle_model(track="LMS_Track.txt", n_points=20):
 
     symbolic_clothoid_spline = SymbolicCubicSpline(n_points=n_points, u=s)
 
-    # kapparef_s = kapparef_s(s)
     kapparef_s = symbolic_clothoid_spline.get_symbolic_spline()
 
     # controls
