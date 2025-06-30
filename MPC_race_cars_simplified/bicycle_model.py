@@ -93,8 +93,6 @@ def bicycle_model(track="LMS_Track.txt", n_points=20):
     # parameters
     p = symbolic_clothoid_spline.get_parameters()
 
-    print(p)
-
     beta = atan(lr * tan(delta) / (lf + lr))
     kappa = sin(beta) / (lf + lr)
 
