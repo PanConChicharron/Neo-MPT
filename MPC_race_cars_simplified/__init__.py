@@ -19,7 +19,7 @@ __license__ = "2-Clause BSD License"
 
 # Import main modules
 from . import bicycle_model
-from . import acados_settings_dev
+from . import cubic_spline_curvature_mpc
 from . import plotFcn
 from . import time2spatial
 from . import tracks
@@ -32,7 +32,7 @@ __all__ = [
     'MovingWindowBicycleModel', 
     'bicycle_model_moving_window',
     'acados_settings',
-    'acados_settings_dev',
+    'cubic_spline_curvature_mpc',
     'plotFcn',
     'time2spatial',
     'tracks'
