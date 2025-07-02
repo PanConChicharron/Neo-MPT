@@ -79,7 +79,7 @@ Required packages:
 ### Basic Racing Simulation
 ```python
 from MPC_race_cars_simplified.acados_settings_dev import acados_settings
-from Utils.clothoid_spline import ClothoidSpline
+from Utils.symbolic_cubic_spline import SymbolicCubicSpline
 
 # Setup MPC
 Tf = 5.0  # prediction horizon
@@ -88,7 +88,7 @@ track = "LMS_Track.txt"
 constraint, model, acados_solver = acados_settings(Tf, N, track, num_points=50)
 
 # Create spline for trajectory
-clothoid_spline = ClothoidSpline("tracks/LMS_Track.txt")
+clothoid_spline = SymbolicCubicSpline("tracks/LMS_Track.txt")
 
 # Run simulation
 # (see examples/race_cars_simplified.py for complete example)

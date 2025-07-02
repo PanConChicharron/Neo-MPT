@@ -36,9 +36,8 @@ import numpy as np
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from MPC_race_cars_simplified.cubic_spline_curvature_mpc import *
+from MPC_race_cars_simplified.path_tracking_mpc import *
 from MPC_race_cars_simplified.plotFcn import *
-from MPC_race_cars_simplified.tracks.readDataFcn import getTrack
 from Utils.clothoid_spline import ClothoidSpline
 import matplotlib.pyplot as plt
 

@@ -2,9 +2,9 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from Utils.clothoid_spline import ClothoidSpline
+from Utils.symbolic_cubic_spline import SymbolicCubicSpline
 
-clothoid_spline = ClothoidSpline("../../MPC_race_cars_simplified/tracks/LMS_Track.txt")
+clothoid_spline = SymbolicCubicSpline("../../MPC_race_cars_simplified/tracks/LMS_Track.txt")
 
 print("knots: ", clothoid_spline.get_knots())
 print("coefficients: ", clothoid_spline.get_coefficients())

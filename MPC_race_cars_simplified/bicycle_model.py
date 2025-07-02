@@ -31,7 +31,6 @@
 # author: Daniel Kloeser
 
 from casadi import *
-from MPC_race_cars_simplified.tracks.readDataFcn import getTrack
 
 from Utils.symbolic_cubic_spline import SymbolicCubicSpline
 
@@ -50,7 +49,6 @@ def bicycle_model(n_points=20):
     # kapparef = np.append(kapparef[length - 80 : length - 1], kapparef)
 
     ## Race car parameters
-    m = 0.043
     lf = 0.030
     lr = 0.010
 
@@ -60,11 +58,11 @@ def bicycle_model(n_points=20):
     eY = SX.sym("eY")
     e_ψ = SX.sym("e_ψ")
     v = SX.sym("v")
-    x = vertcat(s, eY, e_ψ, v)    
-
-    symbolic_clothoid_spline = SymbolicCubicSpline(n_points=n_points, u=s)
-
-    kapparef_s = symbolic_clothoid_spline.get_symbolic_spline()
+    x = vertcat(s, eY, e_ψ, v)
+    
+    symbolic_curvature_cubic_spline = SymbolicCubicSpline(n_points=n_points, u=s)
+    kappa_ref_s = symbolic_curvature_cubic_spline.get_symbolic_spline()
+    p = symbolic_curvature_cubic_spline.get_parameters()
 
     # controls
     a = SX.sym("a")
@@ -81,24 +79,20 @@ def bicycle_model(n_points=20):
     # algebraic variables
     z = vertcat([])
 
-    # parameters
-    p = symbolic_clothoid_spline.get_parameters()
-
     beta = atan(lr * tan(delta) / (lf + lr))
-    kappa = sin(beta) / (lf + lr)
+    kappa = cos(beta) * tan(delta) / (lf + lr)
 
     # dynamics
-    sdot = (v * cos(e_ψ + beta)) / (1 - kapparef_s * eY)
+    sdot = (v * cos(e_ψ + beta)) / (1 - kappa_ref_s * eY)
     f_expl = vertcat(
         sdot,
         v * sin(e_ψ + beta),
-        v * kappa - kapparef_s * sdot,
+        v * kappa - kappa_ref_s * sdot,
         a,
     )
 
     # constraint on forces
     a_lat = v * v * kappa
-    a_long = a
 
     # Model bounds
     model.eY_min = -0.12  # width of the track [m]
@@ -121,7 +115,6 @@ def bicycle_model(n_points=20):
 
     # Define model struct
     params = types.SimpleNamespace()
-    params.m = m
     params.lf = lf
     params.lr = lr
     model.f_impl_expr = xdot - f_expl

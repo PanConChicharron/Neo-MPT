@@ -3,7 +3,7 @@ Generic symbolic cubic spline for optimization applications.
 """
 
 import casadi as ca
-
+import numpy as np
 class SymbolicCubicSpline:
     """Simple symbolic cubic spline class."""
     
@@ -74,5 +74,3 @@ class SymbolicCubicSpline:
     def get_parameters(self):
         """Get the parameters of the spline."""
         return ca.vertcat(self.knots, ca.reshape(self.coefficients, -1, 1))
-            
-        
