@@ -36,26 +36,18 @@ from MPC_race_cars_simplified.tracks.readDataFcn import getTrack
 from Utils.symbolic_cubic_spline import SymbolicCubicSpline
 
 
-def bicycle_model(track="LMS_Track.txt", n_points=20):
+def bicycle_model(n_points=20):
     # define structs
     constraint = types.SimpleNamespace()
     model = types.SimpleNamespace()
 
-    model_name = "Spatialbicycle_model"
-
-    # load track parameters
-    [s0, _, _, _, kapparef] = getTrack(track)
-    length = len(s0)
-    pathlength = s0[-1]
+    model_name = "Spatial_bicycle_model"
 
     # copy loop to beginning and end
     # s0 = np.append(s0, [s0[length - 1] + s0[1:length]])
     # kapparef = np.append(kapparef, kapparef[1:length])
     # s0 = np.append([-s0[length - 2] + s0[length - 81 : length - 2]], s0)
     # kapparef = np.append(kapparef[length - 80 : length - 1], kapparef)
-
-    # compute spline interpolations
-    kapparef_s = interpolant("kapparef_s", "bspline", [s0], kapparef)
 
     ## Race car parameters
     m = 0.043
@@ -125,7 +117,6 @@ def bicycle_model(track="LMS_Track.txt", n_points=20):
 
     # define constraints struct
     constraint.alat = Function("a_lat", [x, u], [a_lat])
-    constraint.pathlength = pathlength
     constraint.expr = vertcat(a_lat)
 
     # Define model struct

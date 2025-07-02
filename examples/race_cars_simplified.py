@@ -48,8 +48,7 @@ This example is for the optimal racing of the frc race cars. The model is a simp
 The simulation starts at s=-2m until one round is completed(s=8.71m). The beginning is cut in the final plots to simulate a 'warm start'. 
 """
 
-track = "LMS_Track.txt"
-[Sref, _, _, _, kapparef] = getTrack(track)
+track = "../../MPC_race_cars_simplified/tracks/LMS_Track.txt"
 
 Tf = 5.0  # prediction horizon
 N = 50  # number of discretization steps
@@ -58,7 +57,7 @@ sref_N = 3  # reference for final reference progress
 
 num_points = 50
 # load model
-constraint, model, acados_solver = acados_settings(Tf, N, track, num_points)
+constraint, model, acados_solver = acados_settings(Tf, N, num_points)
 
 # dimensions
 nx = model.x.rows()
@@ -80,7 +79,7 @@ tcomp_max = 0
 acados_solver.set(0, "lbx", x0)
 acados_solver.set(0, "ubx", x0)
 
-clothoid_spline = ClothoidSpline("../../MPC_race_cars_simplified/tracks/LMS_Track.txt")
+clothoid_spline = ClothoidSpline(track)
 
 # simulate
 for i in range(Nsim):
@@ -127,7 +126,7 @@ for i in range(Nsim):
     s0 = x0[0]
 
     # check if one lap is done and break and remove entries beyond
-    if x0[0] > Sref[-1] + 0.1:
+    if x0[0] > clothoid_spline.pathlength + 0.1:
         # find where vehicle first crosses start line
         N0 = np.where(np.diff(np.sign(simX[:, 0])))[0][0]
         Nsim = i - N0  # correct to final number of simulation steps for plotting

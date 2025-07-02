@@ -36,12 +36,12 @@ import scipy.linalg
 import numpy as np
 
 
-def acados_settings(Tf, N, track_file, n_points):
+def acados_settings(Tf, N, n_points):
     # create render arguments
     ocp = AcadosOcp()
 
     # export model
-    model, constraint = bicycle_model(track_file, n_points)
+    model, constraint = bicycle_model(n_points)
 
     # define acados ODE
     model_ac = AcadosModel()

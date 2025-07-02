@@ -12,6 +12,8 @@ class ClothoidSpline:
         self.knots = self.spline.x
         self.coefficients = self.spline.c
 
+        self.pathlength = s0[-1]
+
     def get_spline(self):
         return self.spline
     
