@@ -1,3 +1,4 @@
-"""Utils package with symbolic B-spline."""
+"""Utils package with cubic splines."""
 
-from .symbolic_cubic_spline import SymbolicCubicSpline
+from .cubic_spline_1d import CubicSpline1d
+from .clothoid_spline import ClothoidSpline

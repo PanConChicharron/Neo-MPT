@@ -64,11 +64,6 @@ def acados_settings(Tf, N, n_points):
     ny = nx + nu
     ny_e = nx
 
-    nsbx = 0
-    nh = constraint.expr.shape[0]
-    nsh = nh
-    ns = nsh + nsbx
-
     # discretization
     ocp.solver_options.N_horizon = N
 
@@ -160,6 +155,7 @@ def acados_settings(Tf, N, n_points):
     ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
     ocp.solver_options.integrator_type = "ERK"
     ocp.solver_options.sim_method_num_stages = 4
+    ocp.solver_options.num_steps = 1
     ocp.solver_options.nlp_solver_max_iter = 20
     ocp.solver_options.tol = 1e-4
 

@@ -1,30 +1,15 @@
 import numpy as np
 from scipy.interpolate import CubicSpline
 
-from MPC_race_cars_simplified.tracks.readDataFcn import getTrack
 
-class 2dCubicSpline:
-    def __init__(self, track_file: str):
-        self.track_file = track_file
-        [x, y] = getTrack(track_file)
+class CubicSpline1d:
+    def __init__(self, knots, values):
+        self.spline = CubicSpline(knots, values)
 
-        chord_lengths = np.sqrt(np.diff(x)**2 + np.diff(y)**2)
+        self.knots = knots
+        self.coefficients = self.spline.c
 
-        self.spline_x = CubicSpline(chord_lengths, x)
-        self.spline_y = CubicSpline(chord_lengths, y)
-
-        self.knots = np.array([self.spline_x.x, self.spline_y.x])
-        self.coefficients = np.array([self.spline_x.c, self.spline_y.c])
-
-        self.pathlength = chord_lengths[-1]
-
-    def __init__(self, x_coeffs, y_coeffs):
-        chord_lengths = np.sqrt(np.diff(x_coeffs)**2 + np.diff(y_coeffs)**2)
-
-        self.knots = np.array([self.spline_x.x, self.spline_y.x])
-        self.coefficients = np.array([self.spline_x.c, self.spline_y.c])
-
-        self.pathlength = chord_lengths[-1]
+        self.pathlength = self.spline.x[-1]
 
     def get_spline(self):
         return self.spline
@@ -36,13 +21,12 @@ class 2dCubicSpline:
         return self.coefficients
     
     def get_sub_spline_knots_and_coefficients_from_window_size(self, s, window_size):
-        closest_knot = np.argmin(np.abs(self.knots - s))
+        closest_knot = np.argmin(np.abs(self.spline.x - s))
 
-        sub_knots = self.knots[closest_knot:min(closest_knot+window_size, len(self.knots))]
-        sub_coefficients = self.coefficients[:, closest_knot:min(closest_knot+window_size-1, np.shape(self.coefficients)[1])]
+        sub_knots = self.spline.x[closest_knot:min(closest_knot+window_size, len(self.spline.x))]
+        sub_coefficients = self.spline.c[:, closest_knot:min(closest_knot+window_size-1, np.shape(self.spline.c)[1])]
 
         if len(sub_knots) < window_size:
-            # import pdb; pdb.set_trace()
             
             sub_knots = np.append(sub_knots, np.ones(window_size - len(sub_knots)) * sub_knots[-1])
             sub_coefficients = np.append(sub_coefficients, np.zeros((4, window_size -1 - np.shape(sub_coefficients)[1])), axis=1)

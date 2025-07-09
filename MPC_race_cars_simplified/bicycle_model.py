@@ -106,8 +106,8 @@ def bicycle_model(n_points=20):
     model.delta_max = np.pi/4  # maximum steering angle [rad]
 
     # nonlinear constraint
-    constraint.alat_min = -4  # maximum lateral force [m/s^2]
-    constraint.alat_max = 4  # maximum lateral force [m/s^1]
+    constraint.alat_min = -2  # maximum lateral force [m/s^2]
+    constraint.alat_max = 2  # maximum lateral force [m/s^1]
 
     # define constraints struct
     constraint.alat = Function("a_lat", [x, u], [a_lat])
