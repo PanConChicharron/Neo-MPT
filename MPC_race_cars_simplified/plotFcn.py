@@ -36,15 +36,13 @@ from matplotlib import cm
 import matplotlib.pyplot as plt
 import numpy as np
 
-def plotTrackProj(simX,filename='LMS_Track.txt', T_opt=None):
+def plotTrackProj(simX,filename='LMS_Track.txt', T_opt=None, N_opt=None):
     # load track
-    s=simX[:,0]
-    n=simX[:,1]
-    alpha=simX[:,2]
-    v=simX[:,3]
+    eY=simX[:,0]
+    eψ=simX[:,1]
     distance=0.12
     # transform data
-    [x, y, _, _] = transformProj2Orig(s, n, alpha, v,filename)
+    [x, y, _, _] = transformProj2Orig(np.array(range(0, len(eY)))/N_opt*T_opt, eY, eψ, range(0, len(eY)),filename)
     # plot racetrack map
 
     #Setup plot
@@ -68,7 +66,7 @@ def plotTrackProj(simX,filename='LMS_Track.txt', T_opt=None):
     plt.plot(x,y, '-b')
 
     # Draw driven trajectory
-    heatmap = plt.scatter(x,y, c=v, cmap=cm.rainbow, edgecolor='none', marker='o')
+    heatmap = plt.scatter(x,y, c=range(0, len(eY)), cmap=cm.rainbow, edgecolor='none', marker='o')
     cbar = plt.colorbar(heatmap, fraction=0.035)
     cbar.set_label("velocity in [m/s]")
     ax = plt.gca()
@@ -99,9 +97,8 @@ def plotRes(simX,simU,t):
     plt.figure()
     plt.subplot(2, 1, 1)
     plt.step(t, simU[:,0], color='r')
-    plt.step(t, simU[:,1], color='g')
     plt.title('closed-loop simulation')
-    plt.legend(['a','delta'])
+    plt.legend(['delta'])
     plt.ylabel('u')
     plt.xlabel('t')
     plt.grid(True)
@@ -109,19 +106,5 @@ def plotRes(simX,simU,t):
     plt.plot(t, simX[:,:])
     plt.ylabel('x')
     plt.xlabel('t')
-    plt.legend(['s','eY','e_ψ','v','a','delta'])
+    plt.legend(['eY','e_ψ'])
     plt.grid(True)
-
-def plotalat(simX,simU,constraint,t):
-    Nsim=t.shape[0]
-    plt.figure()
-    alat=np.zeros(Nsim)
-    for i in range(Nsim):
-        alat[i]=constraint.alat(simX[i,:],simU[i,:])
-    plt.plot(t,alat)
-    plt.plot([t[0],t[-1]],[constraint.alat_min, constraint.alat_min],'k--')
-    plt.plot([t[0],t[-1]],[constraint.alat_max, constraint.alat_max],'k--')
-    plt.legend(['alat','alat_min/max'])
-    plt.xlabel('t')
-    plt.ylabel('alat[m/s^2]')
-

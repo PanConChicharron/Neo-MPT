@@ -28,14 +28,14 @@
 # POSSIBILITY OF SUCH DAMAGE.;
 #
 
-# author: Daniel Kloeser
+# author: DaeYel Kloeser
 
 import numpy as np
 from MPC_race_cars_simplified.tracks.readDataFcn import getTrack
 
 
 
-def transformProj2Orig(si,ni,alpha,v,filename='LMS_Track.txt'):
+def transformProj2Orig(si,eY,eψ,v,filename='LMS_Track.txt'):
     [sref,xref,yref,psiref,_]=getTrack(filename=filename)
     tracklength=sref[-1]
     si=si%tracklength
@@ -46,9 +46,9 @@ def transformProj2Orig(si,ni,alpha,v,filename='LMS_Track.txt'):
     y0=(1-t)*yref[idxmindist]+t*yref[idxmindist2]
     psi0=(1-t)*psiref[idxmindist]+t*psiref[idxmindist2]
 
-    x=x0-ni*np.sin(psi0)
-    y=y0+ni*np.cos(psi0)
-    psi=psi0+alpha
+    x=x0-eY*np.sin(psi0)
+    y=y0+eY*np.cos(psi0)
+    psi=psi0+eψ
     v=v
     return x,y,psi,v
 
@@ -91,9 +91,9 @@ def transformOrig2Proj(x,y,psi,v,filename='LMS_Track.txt'):
 
     s=s0
     n=np.cos(psi0)*(y-y0)-np.sin(psi0)*(x-x0)
-    alpha=psi-psi0
+    eψ=psi-psi0
     v=v
-    return s,n,alpha,v
+    return s,n,eψ,v
 
 def findProjection(x,y,xref,yref,sref,idxmindist,idxmindist2):
     vabs=abs(sref[idxmindist]-sref[idxmindist2])

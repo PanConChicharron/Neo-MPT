@@ -54,45 +54,35 @@ def bicycle_model_spatial(n_points=20):
 
     ## CasADi Model
     # set up states & controls
-    s = SX.sym("s")
     eY = SX.sym("eY")
     e_ψ = SX.sym("e_ψ")
-    v = SX.sym("v")
-    x = vertcat(s, eY, e_ψ, v)
-    
-    symbolic_curvature_cubic_spline = SymbolicCubicSpline(n_points=n_points, u=s)
+    x = vertcat(eY, e_ψ)
+
+    s_sym = SX.sym("s")  # symbolic independent variable
+    symbolic_curvature_cubic_spline = SymbolicCubicSpline(n_points=n_points, u=s_sym)
     kappa_ref_s = symbolic_curvature_cubic_spline.get_symbolic_spline()
-    p = symbolic_curvature_cubic_spline.get_parameters()
+    p = vertcat(s_sym, symbolic_curvature_cubic_spline.get_parameters())
 
     # controls
-    a = SX.sym("a")
     delta = SX.sym("delta")
-    u = vertcat(a, delta)
+    u = vertcat(delta)
 
     # xdot
-    sdot = SX.sym("sdot")
     eYdot = SX.sym("eYdot")
     e_ψdot = SX.sym("e_ψdot")
-    vdot = SX.sym("vdot")
-    xdot = vertcat(sdot, eYdot, e_ψdot, vdot)
-
-    # algebraic variables
-    z = vertcat([])
+    xdot = vertcat(eYdot, e_ψdot)
 
     beta = atan(lr * tan(delta) / (lf + lr))
     kappa = cos(beta) * tan(delta) / (lf + lr)
 
     # dynamics
-    sdot = (v * cos(e_ψ + beta)) / (1 - kappa_ref_s * eY)
-    f_expl = vertcat(
-        1,
-        v * sin(e_ψ + beta)/sdot,
-        v * kappa/sdot - kappa_ref_s,
-        a/sdot,
-    )
+    deY_ds = tan(e_ψ + beta)
+    deψ_ds = kappa - kappa_ref_s
 
-    # constraint on forces
-    a_lat = v * v * kappa
+    f_expl = vertcat(
+        deY_ds,
+        deψ_ds,
+    )
 
     # Model bounds
     model.eY_min = -0.12  # width of the track [m]
@@ -105,14 +95,6 @@ def bicycle_model_spatial(n_points=20):
     model.delta_min = -np.pi/4  # minimum steering angle [rad]
     model.delta_max = np.pi/4  # maximum steering angle [rad]
 
-    # nonlinear constraint
-    constraint.alat_min = -2  # maximum lateral force [m/s^2]
-    constraint.alat_max = 2  # maximum lateral force [m/s^1]
-
-    # define constraints struct
-    constraint.alat = Function("a_lat", [x, u], [a_lat])
-    constraint.expr = vertcat(a_lat)
-
     # Define model struct
     params = types.SimpleNamespace()
     params.lf = lf
@@ -122,7 +104,6 @@ def bicycle_model_spatial(n_points=20):
     model.x = x
     model.xdot = xdot
     model.u = u
-    model.z = z
     model.p = p
     model.name = model_name
     model.params = params

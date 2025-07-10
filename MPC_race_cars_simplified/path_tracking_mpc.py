@@ -69,7 +69,7 @@ def acados_settings(Tf, N, n_points):
 
     # set cost
     #           (s, eY  , e_ψ , v)
-    Q = np.diag([1, 1e-2, 5e-2, 1e-3])
+    Q = np.diag([1, 1e-2, 5e-2, 2e-3])
 
     R = np.eye(nu)
     R[0, 0] = 1e-3

@@ -50,13 +50,9 @@ def acados_settings(Tf, N, n_points):
     model_ac.x = model.x
     model_ac.xdot = model.xdot
     model_ac.u = model.u
-    model_ac.z = model.z
     model_ac.p = model.p
     model_ac.name = model.name
     ocp.model = model_ac
-
-    # define constraint
-    model_ac.con_h_expr = constraint.expr
 
     # dimensions
     nx = model.x.rows()
@@ -68,11 +64,10 @@ def acados_settings(Tf, N, n_points):
     ocp.solver_options.N_horizon = N
 
     # set cost
-    Q = np.diag([ 1e-1, 1e0, 1e-1, 1e-2])
+    Q = np.diag([1e0, 1e-1])
 
     R = np.eye(nu)
     R[0, 0] = 1e-3
-    R[1, 1] = 5e-2
 
     Qe = 5*Q
 
@@ -88,8 +83,7 @@ def acados_settings(Tf, N, n_points):
     ocp.cost.Vx = Vx
 
     Vu = np.zeros((ny, nu))
-    Vu[4, 0] = 1.0
-    Vu[5, 1] = 1.0
+    Vu[ny-1, 0] = 1.0
     ocp.cost.Vu = Vu
 
     Vx_e = np.zeros((ny_e, nx))
@@ -102,8 +96,8 @@ def acados_settings(Tf, N, n_points):
     # ocp.cost.Zu = 1 * np.ones((ns,))
 
     # set initial references
-    ocp.cost.yref = np.array([1, 0, 0, 0, 0, 0])
-    ocp.cost.yref_e = np.array([0, 0, 0, 0])
+    ocp.cost.yref = np.array([0, 0, 0])
+    ocp.cost.yref_e = np.array([0, 0])
 
     # setting constraints
     ocp.constraints.lbx = np.array([
@@ -115,33 +109,12 @@ def acados_settings(Tf, N, n_points):
     ocp.constraints.idxbx = np.array([1])
 
     ocp.constraints.lbu = np.array([
-        model.a_min,
         model.delta_min,
     ])
     ocp.constraints.ubu = np.array([
-        model.a_max,
         model.delta_max,
     ])
-    ocp.constraints.idxbu = np.array([0, 1])
-
-    # ocp.constraints.lsbx = np.zeros([nsbx])
-    # ocp.constraints.usbx = np.zeros([nsbx])
-    # ocp.constraints.idxsbx = np.array(range(nsbx))
-
-    ocp.constraints.lh = np.array(
-        [
-            constraint.alat_min,
-        ]
-    )
-    ocp.constraints.uh = np.array(
-        [
-            constraint.alat_max,
-        ]
-    )
-
-    # ocp.constraints.lsh = np.zeros(nsh)
-    # ocp.constraints.ush = np.zeros(nsh)
-    # ocp.constraints.idxsh = np.array(range(nsh))
+    ocp.constraints.idxbu = np.array([0])
 
     # set initial condition
     ocp.constraints.x0 = np.zeros(nx)
