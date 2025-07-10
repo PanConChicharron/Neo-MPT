@@ -31,7 +31,7 @@
 # author: Daniel Kloeser
 
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
-from MPC_race_cars_simplified.bicycle_model import bicycle_model
+from MPC_race_cars_simplified.bicycle_model_spatial import bicycle_model_spatial
 import scipy.linalg
 import numpy as np
 
@@ -41,7 +41,7 @@ def acados_settings(Tf, N, n_points):
     ocp = AcadosOcp()
 
     # export model
-    model, constraint = bicycle_model(n_points)
+    model, constraint = bicycle_model_spatial(n_points)
 
     # define acados ODE
     model_ac = AcadosModel()
@@ -50,13 +50,13 @@ def acados_settings(Tf, N, n_points):
     model_ac.x = model.x
     model_ac.xdot = model.xdot
     model_ac.u = model.u
+    model_ac.z = model.z
     model_ac.p = model.p
     model_ac.name = model.name
+    ocp.model = model_ac
 
     # define constraint
     model_ac.con_h_expr = constraint.expr
-
-    ocp.model = model_ac
 
     # dimensions
     nx = model.x.rows()
@@ -68,12 +68,11 @@ def acados_settings(Tf, N, n_points):
     ocp.solver_options.N_horizon = N
 
     # set cost
-    #           (s, eY  , e_ψ , v)
-    Q = np.diag([1, 1e-2, 5e-2, 1e-3])
+    Q = np.diag([ 1e-1, 1e0, 1e-1, 1e-2])
 
     R = np.eye(nu)
     R[0, 0] = 1e-3
-    R[1, 1] = 1e-2
+    R[1, 1] = 5e-2
 
     Qe = 5*Q
 
@@ -125,6 +124,10 @@ def acados_settings(Tf, N, n_points):
     ])
     ocp.constraints.idxbu = np.array([0, 1])
 
+    # ocp.constraints.lsbx = np.zeros([nsbx])
+    # ocp.constraints.usbx = np.zeros([nsbx])
+    # ocp.constraints.idxsbx = np.array(range(nsbx))
+
     ocp.constraints.lh = np.array(
         [
             constraint.alat_min,
@@ -135,6 +138,10 @@ def acados_settings(Tf, N, n_points):
             constraint.alat_max,
         ]
     )
+
+    # ocp.constraints.lsh = np.zeros(nsh)
+    # ocp.constraints.ush = np.zeros(nsh)
+    # ocp.constraints.idxsh = np.array(range(nsh))
 
     # set initial condition
     ocp.constraints.x0 = np.zeros(nx)

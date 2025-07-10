@@ -49,10 +49,11 @@ The simulation starts at s=-2m until one round is completed(s=8.71m). The beginn
 
 track = "../../MPC_race_cars_simplified/tracks/LMS_Track.txt"
 
-Tf = 5.0  # prediction horizon
+Tf = 10.0  # prediction horizon
 N = 50  # number of discretization steps
-T = 50.00  # maximum simulation time[s]
-sref_N = 3  # reference for final reference progress
+T = 5000.0  # maximum simulation time[s]
+
+dt = T/N
 
 num_points = 50
 # load model
@@ -80,19 +81,21 @@ acados_solver.set(0, "ubx", x0)
 
 clothoid_spline = ClothoidSpline(track)
 
+v_ref = 5.0
+
 # simulate
 for i in range(Nsim):
     # update reference
     # Extract sub-spline for the current position
     sub_knots, sub_coefficients = clothoid_spline.get_sub_spline_knots_and_coefficients_from_window_size(x0[0], num_points)
     parameters = np.concatenate((sub_knots, (sub_coefficients.flatten())), axis=0)
-    sref = s0 + sref_N
+    sref = clothoid_spline.pathlength
     for j in range(N):
-        yref = np.array([s0 + (sref - s0) * j / N, 0, 0, 5.0, 0, 0])
+        yref = np.array([s0 + (sref - s0) * j / N, 0, 0, v_ref, 0, 0])
         # yref=np.array([1,0,0,1,0,0,0,0])
         acados_solver.set(j, "yref", yref)
         acados_solver.set(j, "p", parameters)
-    yref_N = np.array([sref, 0, 0, 0])
+    yref_N = np.array([min(s0+v_ref*T, sref), 0, 0, 0])
     # yref_N=np.array([0,0,0,0,0,0])
     acados_solver.set(N, "yref", yref_N)
 
@@ -113,6 +116,17 @@ for i in range(Nsim):
     # get solution
     x0 = acados_solver.get(0, "x")
     u0 = acados_solver.get(0, "u")
+        
+    print("s: {}, s_max: {}".format(x0[0], clothoid_spline.pathlength))
+
+    # for i in range(acados_solver.N + 1):  # N shooting nodes → N+1 stages
+    #     lam = acados_solver.get(i, "lam")
+    #     print(f"Stage {i} lam: {lam}")
+
+    #     if i < acados_solver.N:
+    #         pi = acados_solver.get(i, "pi")
+    #         print(f"Stage {i} pi (dynamics multipliers): {pi}")
+
     for j in range(nx):
         simX[i, j] = x0[j]
     for j in range(nu):
@@ -122,10 +136,12 @@ for i in range(Nsim):
     x0 = acados_solver.get(1, "x")
     acados_solver.set(0, "lbx", x0)
     acados_solver.set(0, "ubx", x0)
+
+    s0_prev = s0
     s0 = x0[0]
 
     # check if one lap is done and break and remove entries beyond
-    if x0[0] > clothoid_spline.pathlength + 0.1:
+    if np.abs(s0-s0_prev)/max(s0_prev, 1e-3) < 1e-5 or s0 > clothoid_spline.pathlength:
         # find where vehicle first crosses start line
         N0 = np.where(np.diff(np.sign(simX[:, 0])))[0][0]
         Nsim = i - N0  # correct to final number of simulation steps for plotting

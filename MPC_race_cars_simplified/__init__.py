@@ -26,6 +26,7 @@ from . import tracks
 
 # Import commonly used functions
 from .bicycle_model import bicycle_model
+from .bicycle_model_spatial import bicycle_model_spatial
 
 __all__ = [
     'bicycle_model',

@@ -36,7 +36,7 @@ import numpy as np
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from MPC_race_cars_simplified.path_tracking_mpc import *
+from MPC_race_cars_simplified.path_tracking_mpc_spatial import *
 from MPC_race_cars_simplified.plotFcn import *
 from Utils.clothoid_spline import ClothoidSpline
 import matplotlib.pyplot as plt
@@ -51,7 +51,7 @@ track = "../../MPC_race_cars_simplified/tracks/LMS_Track.txt"
 
 Tf = 5.0  # prediction horizon
 N = 50  # number of discretization steps
-T = 50.00  # maximum simulation time[s]
+T = 100.00  # maximum simulation distance[m]
 sref_N = 3  # reference for final reference progress
 
 num_points = 50
@@ -64,9 +64,8 @@ nu = model.u.rows()
 ny = nx + nu
 Nsim = int(T * N / Tf)
 
-
 # Define initial conditions
-x0 = np.array([0, 0, 0, 0])
+x0 = np.array([2, 0, 0, 10.0])
 
 # initialize data structs
 simX = np.zeros((Nsim, nx))
@@ -80,12 +79,14 @@ acados_solver.set(0, "ubx", x0)
 
 clothoid_spline = ClothoidSpline(track)
 
+T = clothoid_spline.pathlength
+
 # simulate
 for i in range(Nsim):
     # update reference
     # Extract sub-spline for the current position
     sub_knots, sub_coefficients = clothoid_spline.get_sub_spline_knots_and_coefficients_from_window_size(x0[0], num_points)
-    parameters = np.concatenate(sub_knots, (sub_coefficients.flatten()), axis=0)
+    parameters = np.concatenate([sub_knots, sub_coefficients.flatten()])
     sref = s0 + sref_N
     for j in range(N):
         yref = np.array([s0 + (sref - s0) * j / N, 0, 0, 5.0, 0, 0])

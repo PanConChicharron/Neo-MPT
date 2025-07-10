@@ -35,12 +35,12 @@ from casadi import *
 from Utils.symbolic_cubic_spline import SymbolicCubicSpline
 
 
-def bicycle_model(n_points=20):
+def bicycle_model_spatial(n_points=20):
     # define structs
     constraint = types.SimpleNamespace()
     model = types.SimpleNamespace()
 
-    model_name = "curvilinear_bicycle_model"
+    model_name = "curvilinear_bicycle_model_spatial"
 
     # copy loop to beginning and end
     # s0 = np.append(s0, [s0[length - 1] + s0[1:length]])
@@ -76,16 +76,19 @@ def bicycle_model(n_points=20):
     vdot = SX.sym("vdot")
     xdot = vertcat(sdot, eYdot, e_ψdot, vdot)
 
+    # algebraic variables
+    z = vertcat([])
+
     beta = atan(lr * tan(delta) / (lf + lr))
     kappa = cos(beta) * tan(delta) / (lf + lr)
 
     # dynamics
     sdot = (v * cos(e_ψ + beta)) / (1 - kappa_ref_s * eY)
     f_expl = vertcat(
-        sdot,
-        v * sin(e_ψ + beta),
-        v * kappa - kappa_ref_s * sdot,
-        a,
+        1,
+        v * sin(e_ψ + beta)/sdot,
+        v * kappa/sdot - kappa_ref_s,
+        a/sdot,
     )
 
     # constraint on forces
@@ -103,8 +106,8 @@ def bicycle_model(n_points=20):
     model.delta_max = np.pi/4  # maximum steering angle [rad]
 
     # nonlinear constraint
-    constraint.alat_min = -4  # maximum lateral force [m/s^2]
-    constraint.alat_max = 4  # maximum lateral force [m/s^1]
+    constraint.alat_min = -2  # maximum lateral force [m/s^2]
+    constraint.alat_max = 2  # maximum lateral force [m/s^1]
 
     # define constraints struct
     constraint.alat = Function("a_lat", [x, u], [a_lat])
@@ -119,6 +122,7 @@ def bicycle_model(n_points=20):
     model.x = x
     model.xdot = xdot
     model.u = u
+    model.z = z
     model.p = p
     model.name = model_name
     model.params = params
