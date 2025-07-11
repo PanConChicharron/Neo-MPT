@@ -4,16 +4,19 @@ from scipy.interpolate import CubicSpline
 from MPC_race_cars_simplified.tracks.readDataFcn import getTrack
 
 class ClothoidSpline:
-    def __init__(self, track_file: str):
+    def __init__(self, track_file: str, num_points = None):
         self.track_file = track_file
         [s0, _, _, _, kapparef] = getTrack(track_file)
 
-        # Resample s0 and kapparef to have only 50 points
-        num_points = 50
-        s0_resampled = np.linspace(s0[0], s0[-1], num_points)
-        kapparef_resampled = np.interp(s0_resampled, s0, kapparef)
-        s0 = s0_resampled
-        kapparef = kapparef_resampled
+        self.s0 = s0
+        self.kapparef = kapparef
+
+        # Resample s0 and kapparef to have only a fixed number of points
+        if num_points != None:
+            s0_resampled = np.linspace(s0[0], s0[-1], num_points)
+            kapparef_resampled = np.interp(s0_resampled, s0, kapparef)
+            s0 = s0_resampled
+            kapparef = kapparef_resampled
 
         self.spline = CubicSpline(s0, kapparef)
         self.knots = self.spline.x

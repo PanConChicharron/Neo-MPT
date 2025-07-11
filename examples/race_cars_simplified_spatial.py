@@ -1,34 +1,4 @@
-#
-# Copyright (c) The acados authors.
-#
-# This file is part of acados.
-#
-# The 2-Clause BSD License
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.;
-#
-
-# author: Daniel Kloeser
+# author: Arjun Jagdish Ram
 
 import time, os
 import sys
@@ -47,88 +17,100 @@ This example is for the optimal racing of the frc race cars. The model is a simp
 The simulation starts at s=-2m until one round is completed(s=8.71m). The beginning is cut in the final plots to simulate a 'warm start'. 
 """
 
-track = "../../MPC_race_cars_simplified/tracks/LMS_Track.txt"
+def get_optimised_steering(N: int, x0, clothoid_spline: ClothoidSpline):
+    Sf = 10 # clothoid_spline.pathlength  # pathlength
 
-N = 100  # number of discretization steps
+    num_points = N
+    # load model
+    constraint, model, acados_solver = acados_settings(Sf, N, num_points)
 
-clothoid_spline = ClothoidSpline(track)
+    # dimensions
+    nx = model.x.rows()
+    nu = model.u.rows()
+    ny = nx + nu
 
-Tf = clothoid_spline.pathlength  # pathlength
+    # initialize data structs
+    simX = np.zeros((N, nx))
+    simU = np.zeros((N, nu))
+    s0 = 0
+    tcomp_sum = 0
+    tcomp_max = 0
 
-num_points = 50
-# load model
-constraint, model, acados_solver = acados_settings(Tf, N, num_points)
+    acados_solver.set(0, "lbx", x0)
+    acados_solver.set(0, "ubx", x0)
 
-# dimensions
-nx = model.x.rows()
-nu = model.u.rows()
-ny = nx + nu
+    v_ref = 5.0
 
+    # Extract sub-spline for the current position
+    sub_knots, sub_coefficients = clothoid_spline.get_sub_spline_knots_and_coefficients_from_window_size(s0, num_points)
+    sref = clothoid_spline.pathlength
+    for j in range(N):
+        # Ensure all arrays are properly shaped before concatenation
+        s_interp = np.array([s0 + (sref - s0) * j / N])  # Convert scalar to 1D array
+        parameters = np.concatenate((s_interp, sub_knots, sub_coefficients.flatten()), axis=0)
+        yref = np.array([0, 0, 0])
+        acados_solver.set(j, "yref", yref)
+        acados_solver.set(j, "p", parameters)
+    yref_N = np.array([0, 0])
+    acados_solver.set(N, "yref", yref_N)
 
-# Define initial conditions
-x0 = np.array([0.12, 0])  # Start with v=1.0 m/s
+    # solve ocp
+    t = time.time()
 
-# initialize data structs
-simX = np.zeros((N, nx))
-simU = np.zeros((N, nu))
-s0 = 0
-tcomp_sum = 0
-tcomp_max = 0
+    status = acados_solver.solve()
+    if status != 0:
+        print("acados returned status {} in closed loop iteration {}.".format(status, i))
 
-acados_solver.set(0, "lbx", x0)
-acados_solver.set(0, "ubx", x0)
+    elapsed = time.time() - t
 
-v_ref = 5.0
+    # manage timings
+    tcomp_sum += elapsed
+    if elapsed > tcomp_max:
+        tcomp_max = elapsed
 
-# Extract sub-spline for the current position
-sub_knots, sub_coefficients = clothoid_spline.get_sub_spline_knots_and_coefficients_from_window_size(s0, num_points)
-sref = clothoid_spline.pathlength
-for j in range(N):
-    # Ensure all arrays are properly shaped before concatenation
-    s_interp = np.array([s0 + (sref - s0) * j / N])  # Convert scalar to 1D array
-    parameters = np.concatenate((s_interp, sub_knots, sub_coefficients.flatten()), axis=0)
-    yref = np.array([0, 0, 0])
-    acados_solver.set(j, "yref", yref)
-    acados_solver.set(j, "p", parameters)
-yref_N = np.array([0, 0])
-acados_solver.set(N, "yref", yref_N)
+    # update initial condition
+    x0 = acados_solver.get(1, "x")
+    acados_solver.set(0, "lbx", x0)
+    acados_solver.set(0, "ubx", x0)
 
-# solve ocp
-t = time.time()
+    for idx in range(0, N):
+        x = acados_solver.get(idx, "x")
+        u = acados_solver.get(idx, "u")
 
-status = acados_solver.solve()
-if status != 0:
-    print("acados returned status {} in closed loop iteration {}.".format(status, i))
+        simX[idx, :] = x
+        simU[idx, :] = u
 
-elapsed = time.time() - t
+    final_idx = int(clothoid_spline.pathlength/(Sf/N))
 
-# manage timings
-tcomp_sum += elapsed
-if elapsed > tcomp_max:
-    tcomp_max = elapsed
+    simX = simX[:final_idx, :]
+    simU = simU[:final_idx, :]
 
-# update initial condition
-x0 = acados_solver.get(1, "x")
-acados_solver.set(0, "lbx", x0)
-acados_solver.set(0, "ubx", x0)
+    return simX, simU, Sf, elapsed
 
-for idx in range(0, N):
-    x = acados_solver.get(idx, "x")
-    u = acados_solver.get(idx, "u")
+def plot_result(Sf, simX, simU, track, N):
+    # Plot Results
+    t = np.linspace(0.0, Sf, np.shape(simX)[0])
+    plotRes(simX, simU, t)
+    plotTrackProj(simX, track, Sf, N)
 
-    simX[idx, :] = x
-    simU[idx, :] = u
+def main():
+    N = 100  # number of discretization steps
+    track = "../../MPC_race_cars_simplified/tracks/LMS_Track.txt"
+    clothoid_spline = ClothoidSpline(track, N)
 
-simX = simX[:N, :]
-simU = simU[:N, :]
+    # Define initial conditions
+    x0 = np.array([0.08, np.pi/4])
 
-# Plot Results
-t = np.linspace(0.0, Tf, np.shape(simX)[0])
-plotRes(simX, simU, t)
-plotTrackProj(simX, track, Tf, N)
+    simX, simU, Sf, elapsed = get_optimised_steering(N, x0, clothoid_spline)
 
-# Print some stats
-print("Computation time: {}s".format(elapsed))
-# avoid plotting when running on Travis
-if os.environ.get("ACADOS_ON_CI") is None:
-    plt.show()
+    plot_result(Sf, simX, simU, track, N)
+
+    # Print some stats
+    print("Computation time: {}s".format(elapsed))
+    print("Frequency: {}Hz".format(1/elapsed))
+    # avoid plotting when running on Travis
+    if os.environ.get("ACADOS_ON_CI") is None:
+        plt.show()
+
+if __name__ == "__main__":
+    main()
