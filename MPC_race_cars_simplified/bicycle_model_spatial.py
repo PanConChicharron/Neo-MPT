@@ -89,9 +89,6 @@ def bicycle_model_spatial(n_points=20):
     model.eY_max = 0.12  # width of the track [m]
 
     # input bounds
-    model.a_min = -4.0
-    model.a_max = 4.0
-
     model.delta_min = -np.pi/4  # minimum steering angle [rad]
     model.delta_max = np.pi/4  # maximum steering angle [rad]
 

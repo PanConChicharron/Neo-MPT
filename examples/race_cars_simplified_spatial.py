@@ -49,15 +49,11 @@ The simulation starts at s=-2m until one round is completed(s=8.71m). The beginn
 
 track = "../../MPC_race_cars_simplified/tracks/LMS_Track.txt"
 
-Tf = 10.0  # prediction horizon
-N = 50  # number of discretization steps
-T = 5000.0  # maximum simulation time[s]
+N = 100  # number of discretization steps
 
 clothoid_spline = ClothoidSpline(track)
 
-Tf = clothoid_spline.pathlength  # pathlength divided by prediction horizon
-
-dt = T/N
+Tf = clothoid_spline.pathlength  # pathlength
 
 num_points = 50
 # load model
@@ -67,15 +63,14 @@ constraint, model, acados_solver = acados_settings(Tf, N, num_points)
 nx = model.x.rows()
 nu = model.u.rows()
 ny = nx + nu
-Nsim = int(T * N / Tf)
 
 
 # Define initial conditions
-x0 = np.array([0, 0])  # Start with v=1.0 m/s
+x0 = np.array([0.12, 0])  # Start with v=1.0 m/s
 
 # initialize data structs
-simX = np.zeros((Nsim, nx))
-simU = np.zeros((Nsim, nu))
+simX = np.zeros((N, nx))
+simU = np.zeros((N, nu))
 s0 = 0
 tcomp_sum = 0
 tcomp_max = 0
@@ -85,82 +80,55 @@ acados_solver.set(0, "ubx", x0)
 
 v_ref = 5.0
 
-# simulate
-for i in range(Nsim):
-    # update reference
-    # Extract sub-spline for the current position
-    sub_knots, sub_coefficients = clothoid_spline.get_sub_spline_knots_and_coefficients_from_window_size(s0, num_points)
-    sref = clothoid_spline.pathlength
-    for j in range(N):
-        # Ensure all arrays are properly shaped before concatenation
-        s_interp = np.array([s0 + (sref - s0) * j / N])  # Convert scalar to 1D array
-        parameters = np.concatenate((s_interp, sub_knots, sub_coefficients.flatten()), axis=0)
-        yref = np.array([0, 0, 0])
-        acados_solver.set(j, "yref", yref)
-        acados_solver.set(j, "p", parameters)
-    yref_N = np.array([0, 0])
-    acados_solver.set(N, "yref", yref_N)
+# Extract sub-spline for the current position
+sub_knots, sub_coefficients = clothoid_spline.get_sub_spline_knots_and_coefficients_from_window_size(s0, num_points)
+sref = clothoid_spline.pathlength
+for j in range(N):
+    # Ensure all arrays are properly shaped before concatenation
+    s_interp = np.array([s0 + (sref - s0) * j / N])  # Convert scalar to 1D array
+    parameters = np.concatenate((s_interp, sub_knots, sub_coefficients.flatten()), axis=0)
+    yref = np.array([0, 0, 0])
+    acados_solver.set(j, "yref", yref)
+    acados_solver.set(j, "p", parameters)
+yref_N = np.array([0, 0])
+acados_solver.set(N, "yref", yref_N)
 
-    # solve ocp
-    t = time.time()
+# solve ocp
+t = time.time()
 
-    status = acados_solver.solve()
-    if status != 0:
-        print("acados returned status {} in closed loop iteration {}.".format(status, i))
+status = acados_solver.solve()
+if status != 0:
+    print("acados returned status {} in closed loop iteration {}.".format(status, i))
 
-    elapsed = time.time() - t
+elapsed = time.time() - t
 
-    # manage timings
-    tcomp_sum += elapsed
-    if elapsed > tcomp_max:
-        tcomp_max = elapsed
+# manage timings
+tcomp_sum += elapsed
+if elapsed > tcomp_max:
+    tcomp_max = elapsed
 
-    # get solution
-    x0 = acados_solver.get(0, "x")
-    u0 = acados_solver.get(0, "u")
+# update initial condition
+x0 = acados_solver.get(1, "x")
+acados_solver.set(0, "lbx", x0)
+acados_solver.set(0, "ubx", x0)
 
-    # for i in range(acados_solver.N + 1):  # N shooting nodes → N+1 stages
-    #     lam = acados_solver.get(i, "lam")
-    #     print(f"Stage {i} lam: {lam}")
+for idx in range(0, N):
+    x = acados_solver.get(idx, "x")
+    u = acados_solver.get(idx, "u")
 
-    #     if i < acados_solver.N:
-    #         pi = acados_solver.get(i, "pi")
-    #         print(f"Stage {i} pi (dynamics multipliers): {pi}")
+    simX[idx, :] = x
+    simU[idx, :] = u
 
-    for j in range(nx):
-        simX[i, j] = x0[j]
-    for j in range(nu):
-        simU[i, j] = u0[j]
-
-    # update initial condition
-    x0 = acados_solver.get(1, "x")
-    acados_solver.set(0, "lbx", x0)
-    acados_solver.set(0, "ubx", x0)
-
-    s0_prev = s0
-    s0 = (i/N)*Tf
-        
-    print("s: {}, s_max: {}".format(s0, clothoid_spline.pathlength))
-
-    # check if one lap is done and break and remove entries beyond
-    if s0 > clothoid_spline.pathlength:
-        # find where vehicle first crosses start line
-        # import pdb; pdb.set_trace()
-        N0 = np.where(np.diff(np.sign(simX[:, 0])))[0][0]
-        Nsim = i - N0  # correct to final number of simulation steps for plotting
-        simX = simX[N0:i, :]
-        simU = simU[N0:i, :]
-        break
+simX = simX[:N, :]
+simU = simU[:N, :]
 
 # Plot Results
-t = np.linspace(0.0, Nsim * Tf / N, Nsim)
+t = np.linspace(0.0, Tf, np.shape(simX)[0])
 plotRes(simX, simU, t)
 plotTrackProj(simX, track, Tf, N)
 
 # Print some stats
-print("Average computation time: {}".format(tcomp_sum / Nsim))
-print("Maximum computation time: {}".format(tcomp_max))
-print("Lap time: {}s".format(Tf * Nsim / N))
+print("Computation time: {}s".format(elapsed))
 # avoid plotting when running on Travis
 if os.environ.get("ACADOS_ON_CI") is None:
     plt.show()

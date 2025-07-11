@@ -40,6 +40,7 @@ def plotTrackProj(simX,filename='LMS_Track.txt', T_opt=None, N_opt=None):
     # load track
     eY=simX[:,0]
     eψ=simX[:,1]
+
     distance=0.12
     # transform data
     [x, y, _, _] = transformProj2Orig(np.array(range(0, len(eY)))/N_opt*T_opt, eY, eψ, range(0, len(eY)),filename)
