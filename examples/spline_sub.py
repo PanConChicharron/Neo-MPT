@@ -6,8 +6,9 @@ import numpy as np
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from Utils import CubicSpline1d
+from Utils.clothoid_spline import ClothoidSpline
 from autoware_internal_debug_msgs.msg import SplineDebug
+from race_cars_simplified_spatial import get_optimised_steering
 
 class ArraySubscriber(Node):
     def __init__(self):
@@ -17,6 +18,8 @@ class ArraySubscriber(Node):
         self.spline_coeffs_x = None
         self.spline_coeffs_y = None
         self.curvatures = None
+
+        self.N = 100
 
         self.spline_knots = self.create_subscription(
             SplineDebug,
@@ -33,13 +36,11 @@ class ArraySubscriber(Node):
         self.spline_coeffs_y = np.array(msg.y_coeffs.data).reshape(4, n_segments)
         self.curvatures = np.array(msg.curvatures.data)
 
-        print(self.spline_knots[-1])
+        self.clothoid_spline = ClothoidSpline(self.spline_knots[:-1], self.curvatures)
 
-        self.spline_curvatures = CubicSpline1d(self.spline_knots[:-1], self.curvatures)
+        x0 = np.array([0., 0.])
 
-    def vector_callback_function(self, msg, variable):
-        vector = np.array(msg.data, dtype=np.float32)
-        self.get_logger().info(f"\nReceived N-length vector:\n{vector}")
+        simX, simU, Sf, elapsed = get_optimised_steering(self.N, x0, self.clothoid_spline)
 
 
 def main(args=None):

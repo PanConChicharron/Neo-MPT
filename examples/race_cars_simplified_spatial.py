@@ -18,7 +18,7 @@ The simulation starts at s=-2m until one round is completed(s=8.71m). The beginn
 """
 
 def get_optimised_steering(N: int, x0, clothoid_spline: ClothoidSpline):
-    Sf = 10 # clothoid_spline.pathlength  # pathlength
+    Sf = clothoid_spline.pathlength  # pathlength
 
     num_points = N
     # load model
@@ -93,10 +93,14 @@ def plot_result(Sf, simX, simU, track, N):
     plotRes(simX, simU, t)
     plotTrackProj(simX, track, Sf, N)
 
+    plt.show()
+
 def main():
     N = 100  # number of discretization steps
     track = "../../MPC_race_cars_simplified/tracks/LMS_Track.txt"
-    clothoid_spline = ClothoidSpline(track, N)
+    [s0, _, _, _, kapparef] = getTrack(track)
+
+    clothoid_spline = ClothoidSpline(s0, kapparef, N)
 
     # Define initial conditions
     x0 = np.array([0.08, np.pi/4])
@@ -108,9 +112,6 @@ def main():
     # Print some stats
     print("Computation time: {}s".format(elapsed))
     print("Frequency: {}Hz".format(1/elapsed))
-    # avoid plotting when running on Travis
-    if os.environ.get("ACADOS_ON_CI") is None:
-        plt.show()
 
 if __name__ == "__main__":
     main()

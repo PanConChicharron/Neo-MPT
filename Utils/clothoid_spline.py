@@ -1,13 +1,8 @@
 import numpy as np
 from scipy.interpolate import CubicSpline
 
-from MPC_race_cars_simplified.tracks.readDataFcn import getTrack
-
 class ClothoidSpline:
-    def __init__(self, track_file: str, num_points = None):
-        self.track_file = track_file
-        [s0, _, _, _, kapparef] = getTrack(track_file)
-
+    def __init__(self, s0, kapparef, num_points = None):
         self.s0 = s0
         self.kapparef = kapparef
 
