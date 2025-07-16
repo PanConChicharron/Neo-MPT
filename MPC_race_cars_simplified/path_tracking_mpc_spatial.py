@@ -9,19 +9,19 @@ from MPC_race_cars_simplified.bicycle_model_spatial import bicycle_model_spatial
 from Utils.clothoid_spline import ClothoidSpline
 
 class PathTrackingMPCSpatial:
-    def __init__(self, Tf, N, n_points):
+    def __init__(self, Tf, N, n_points, lf, lr, w, front_overhang, rear_overhang, left_overhang, right_overhang):
         self.Tf = Tf
         self.N = N
         self.n_points = n_points
 
-        self.constraint, self.model, self.acados_solver = self.acados_settings()
+        self.constraint, self.model, self.acados_solver = self.acados_settings(lf, lr, w, front_overhang, rear_overhang, left_overhang, right_overhang)
 
-    def acados_settings(self):
+    def acados_settings(self, lf, lr, w, front_overhang, rear_overhang, left_overhang, right_overhang):
         # create render arguments
         ocp = AcadosOcp()
 
         # export model
-        model, constraint = bicycle_model_spatial(self.n_points)
+        model, constraint = bicycle_model_spatial(self.n_points, lf, lr, w, front_overhang, rear_overhang, left_overhang, right_overhang)
 
         # define acados ODE
         model_ac = AcadosModel()
@@ -44,7 +44,7 @@ class PathTrackingMPCSpatial:
         ocp.solver_options.N_horizon = self.N
 
         # set cost
-        Q = np.diag([1e-1, 5e-2, 0., 0., 0., 0.])
+        Q = np.diag([1e-1, 5e-2, 1e-2, 1e-2, 1e-2, 1e-2])
 
         R = np.eye(nu)
         R[0, 0] = 1e-1

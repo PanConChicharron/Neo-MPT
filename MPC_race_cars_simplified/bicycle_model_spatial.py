@@ -35,7 +35,7 @@ from casadi import *
 from Utils.symbolic_cubic_spline import SymbolicCubicSpline
 
 
-def bicycle_model_spatial(n_points=20, lf=2.79, lr=0.0, w=1.64, front_overhang=1.0, rear_overhang=1.1, left_overhang=0.128, right_overhang=0.128):
+def bicycle_model_spatial(n_points, lf, lr, w, front_overhang, rear_overhang, left_overhang, right_overhang):
     # define structs
     constraint = types.SimpleNamespace()
     model = types.SimpleNamespace()
@@ -45,10 +45,10 @@ def bicycle_model_spatial(n_points=20, lf=2.79, lr=0.0, w=1.64, front_overhang=1
     L = lf + lr
 
     corner_points = np.array([
-        [lf + front_overhang, w +right_overhang],  # front right
-        [lf + front_overhang, -w - left_overhang],  # front left
-        [-rear_overhang, -w - left_overhang],  # rear left
-        [-rear_overhang, w + right_overhang],  # rear right
+        [lf + front_overhang, w/2 +right_overhang],  # front left
+        [lf + front_overhang, -w/2 - left_overhang],  # front right
+        [-rear_overhang, -w/2 - left_overhang],  # rear right
+        [-rear_overhang, w/2 + right_overhang],  # rear left
     ])
 
     ## CasADi Model
@@ -65,8 +65,6 @@ def bicycle_model_spatial(n_points=20, lf=2.79, lr=0.0, w=1.64, front_overhang=1
         eY_corners.append(eY_idx)
     
     x = vertcat(eY, eψ, *eY_corners)
-
-    print(x)
 
     s_sym = SX.sym("s")  # symbolic independent variable
     symbolic_curvature_cubic_spline = SymbolicCubicSpline(n_points=n_points, u=s_sym)
@@ -114,8 +112,8 @@ def bicycle_model_spatial(n_points=20, lf=2.79, lr=0.0, w=1.64, front_overhang=1
     model.eY_max = 1.5  # width of the track [m]
 
     # input bounds
-    model.delta_min = -np.pi/4  # minimum steering angle [rad]
-    model.delta_max = np.pi/4  # maximum steering angle [rad]
+    model.delta_min = -0.7  # minimum steering angle [rad]
+    model.delta_max = 0.7  # maximum steering angle [rad]
 
     # Define model struct
     params = types.SimpleNamespace()

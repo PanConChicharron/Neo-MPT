@@ -52,7 +52,16 @@ class ArraySubscriber(Node):
             10
         )
 
-        self.path_tracking_mpc_spatial = PathTrackingMPCSpatial(self.Sf, self.N, self.N)
+        # four corners
+        self.lf=2.79
+        self.lr=0.0
+        self.w=1.64
+        self.front_overhang=1.0
+        self.rear_overhang=1.1
+        self.left_overhang=0.128
+        self.right_overhang=0.128
+
+        self.path_tracking_mpc_spatial = PathTrackingMPCSpatial(self.Sf, self.N, self.N, self.lf, self.lr, self.w, self.front_overhang, self.rear_overhang, self.left_overhang, self.right_overhang)
 
         self.optimised_steering = None
         self.optimised_MPT_trajectory = None
@@ -74,11 +83,24 @@ class ArraySubscriber(Node):
 
         self.clothoid_spline = ClothoidSpline(self.spline_knots[:-1], self.curvatures)
 
-        x0 = np.array([0., 0., 0., 0., 0., 0.])
+        x0 = np.array([
+            0., 
+            0., 
+            self.w/2 + self.right_overhang, 
+            -self.w/2 - self.left_overhang, 
+            -self.w/2 - self.left_overhang, 
+            self.w/2 + self.right_overhang,
+        ])
         simX, simU, Sf, elapsed = self.path_tracking_mpc_spatial.get_optimised_steering(x0, self.clothoid_spline)
 
         eY=simX[:,0]
         eψ=simX[:,1]
+
+        front_left_corner = simX[:,2]
+        front_right_corner = simX[:,3]
+        rear_right_corner = simX[:,4]
+        rear_left_corner = simX[:,5]
+
         # Rasterize the spline and plot the x, y spline and the optimized states (eY, eψ)
 
         # Rasterize the spline
@@ -116,36 +138,87 @@ class ArraySubscriber(Node):
 
         # Plot non-blocking and refreshable
         if not hasattr(self, 'fig') or self.fig is None:
-            self.fig, self.ax = plt.subplots(1, 2)
+            self.fig, self.ax = plt.subplots(2, 2)
         else:
-            self.ax[0].clear()
-            self.ax[1].clear()
+            self.ax[0, 0].clear()
+            self.ax[0, 1].clear()
+            self.ax[1, 0].clear()
+            self.ax[1, 1].clear()
 
         # Plot trajectory
-        self.ax[0].plot(x, y, label='Optimized Trajectory (global)')
-        self.ax[0].plot(x_ref, y_ref, '--', label='Reference Spline')
+        self.ax[0, 0].plot(x, y, label='Optimized Trajectory (global)')
+        self.ax[0, 0].plot(x_ref, y_ref, '--', label='Reference Spline')
+
+        # For a straight road, you can simply offset by ±road_width/2 in the normal direction:
+        left_x = x_ref - self.path_tracking_mpc_spatial.model.eY_max * np.sin(psi_ref)
+        left_y = y_ref + self.path_tracking_mpc_spatial.model.eY_max * np.cos(psi_ref)
+        right_x = x_ref - self.path_tracking_mpc_spatial.model.eY_min * np.sin(psi_ref)
+        right_y = y_ref + self.path_tracking_mpc_spatial.model.eY_min * np.cos(psi_ref)
+
+        self.ax[0, 0].plot(left_x, left_y, 'k--', alpha=0.5, label='Left Road Boundary')
+        self.ax[0, 0].plot(right_x, right_y, 'k--', alpha=0.5, label='Right Road Boundary')
         
         if self.optimised_MPT_trajectory is not None:
-            self.ax[0].plot([point.pose.position.x for point in self.optimised_MPT_trajectory], [point.pose.position.y for point in self.optimised_MPT_trajectory], label='MPT Trajectory')
-        self.ax[0].set_xlabel('X [m]')
-        self.ax[0].set_ylabel('Y [m]')
-        self.ax[0].axis('equal')
-        self.ax[0].legend()
+            self.ax[0, 0].plot([point.pose.position.x for point in self.optimised_MPT_trajectory], [point.pose.position.y for point in self.optimised_MPT_trajectory], label='MPT Trajectory')
+
+            # Plot the four corners
+            for i in range(N):
+                cosine, sine = np.cos(psi[i]), np.sin(psi[i])
+                rot = np.array([[cosine, -sine], [sine, cosine]])
+
+                cur_front_left_corner = np.array([x[i], y[i]]) + np.matmul(rot, np.array([(self.lf + self.front_overhang), front_left_corner[i]]))
+                cur_front_right_corner = np.array([x[i], y[i]]) + np.matmul(rot, np.array([(self.lf + self.front_overhang), front_right_corner[i]]))
+                cur_rear_right_corner = np.array([x[i], y[i]]) + np.matmul(rot, np.array([-(self.rear_overhang), rear_right_corner[i]]))
+                cur_rear_left_corner = np.array([x[i], y[i]]) + np.matmul(rot, np.array([-(self.rear_overhang), rear_left_corner[i]]))
+
+                self.ax[0, 0].plot(
+                [
+                    cur_front_left_corner[0],
+                    cur_front_right_corner[0],
+                    cur_rear_right_corner[0],
+                    cur_rear_left_corner[0],
+                    cur_front_left_corner[0],
+                ], 
+                [
+                    cur_front_left_corner[1],
+                    cur_front_right_corner[1],
+                    cur_rear_right_corner[1],
+                    cur_rear_left_corner[1],
+                    cur_front_left_corner[1],
+                ],
+                'r-', alpha=0.5
+                )
+
+        self.ax[0, 0].set_xlabel('X [m]')
+        self.ax[0, 0].set_ylabel('Y [m]')
+        self.ax[0, 0].axis('equal')
+        self.ax[0, 0].legend()
 
         #Plot Inputs
-        self.ax[1].plot(s, simU, label='Optimized Steering')
-        self.ax[1].set_xlabel('s [m]')
-        self.ax[1].set_ylabel('delta [rad]')
-        # self.ax[1].axis('equal')
-        self.ax[1].legend()
+        self.ax[0, 1].plot(s, simU, label='Optimized Steering')
+        self.ax[0, 1].set_xlabel('s [m]')
+        self.ax[0, 1].set_ylabel('delta [rad]')
+        # self.ax[0, 1].axis('equal')
+        self.ax[0, 1].legend()
 
         if self.optimised_steering is not None:
-            s = np.linspace(0, Sf, len(self.optimised_steering))
-            self.ax[1].plot(s, self.optimised_steering, label='Optimized Steering from autoware')
-            self.ax[1].set_xlabel('s [m]')
-            self.ax[1].set_ylabel('delta [rad]')
-            # self.ax[1].axis('equal')
-            self.ax[1].legend()
+            temp_s = np.linspace(0, Sf, len(self.optimised_steering))
+
+            self.ax[0, 1].plot(temp_s, self.optimised_steering, label='Optimized Steering from autoware')
+            self.ax[0, 1].set_xlabel('s [m]')
+            self.ax[0, 1].set_ylabel('delta [rad]')
+            # self.ax[0, 1].axis('equal')
+            self.ax[0, 1].legend()
+
+        self.ax[1, 0].plot(s, eY, label='eY')
+        self.ax[1, 0].plot(s, front_left_corner, label='eY_lf')
+        self.ax[1, 0].plot(s, front_right_corner, label='eY_rf')
+        self.ax[1, 0].plot(s, rear_left_corner, label='eY_lr')
+        self.ax[1, 0].plot(s, rear_right_corner, label='eY_rr')
+        self.ax[1, 0].plot(s, self.path_tracking_mpc_spatial.model.eY_min * np.ones_like(s), '--', label='eY_min')
+        self.ax[1, 0].plot(s, self.path_tracking_mpc_spatial.model.eY_max * np.ones_like(s), '--', label='eY_max')
+        self.ax[1, 0].set_xlabel('s [m]')
+        self.ax[1, 0].legend()
 
 
         self.fig.canvas.draw_idle()
