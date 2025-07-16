@@ -42,19 +42,15 @@ def bicycle_model_spatial(n_points=20):
 
     model_name = "curvilinear_bicycle_model_spatial"
 
-    # copy loop to beginning and end
-    # s0 = np.append(s0, [s0[length - 1] + s0[1:length]])
-    # kapparef = np.append(kapparef, kapparef[1:length])
-    # s0 = np.append([-s0[length - 2] + s0[length - 81 : length - 2]], s0)
-    # kapparef = np.append(kapparef[length - 80 : length - 1], kapparef)
-
-    ## Race car parameters
-    lf = 0.030
-    lr = 0.010
-
     ## Lexus params
     lf = 2.79
     lr = 0.0
+    L = lf + lr
+    w = 1.64
+    front_overhang = 1.0
+    rear_overhang = 1.1
+    left_overhang = 0.128
+    right_overhang = 0.128
 
     ## CasADi Model
     # set up states & controls
@@ -80,7 +76,7 @@ def bicycle_model_spatial(n_points=20):
     kappa = cos(beta) * tan(delta) / (lf + lr)
 
     # dynamics
-    deY_ds = tan(e_ψ + beta)
+    deY_ds = tan(e_ψ) *(1-kappa_ref_s * eY)
     deψ_ds = kappa - kappa_ref_s
 
     f_expl = vertcat(

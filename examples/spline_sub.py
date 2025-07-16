@@ -7,6 +7,7 @@ import numpy as np
 
 import sys
 import os
+import time
 
 from scipy.interpolate import PPoly
 
@@ -63,6 +64,7 @@ class ArraySubscriber(Node):
         self.optimised_MPT_trajectory = np.array([point for point in msg.points])
 
     def spline_knots_callback(self, msg):
+        t = time.time()
         self.spline_knots = np.array(msg.knots.data)
         # Reverse coefficient order to match SciPy's PPoly expectations
         n_segments = len(self.spline_knots) - 1
@@ -108,6 +110,9 @@ class ArraySubscriber(Node):
         x = x_ref - eY * np.sin(psi_ref)
         y = y_ref + eY * np.cos(psi_ref)
         psi = psi_ref + eψ
+
+        elapsed_time = time.time() - t
+        print(f"Time taken for spline processing: {elapsed_time:.4f} seconds")
 
         # Plot non-blocking and refreshable
         if not hasattr(self, 'fig') or self.fig is None:
