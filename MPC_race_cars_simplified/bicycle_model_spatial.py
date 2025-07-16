@@ -55,8 +55,8 @@ def bicycle_model_spatial(n_points=20):
     ## CasADi Model
     # set up states & controls
     eY = SX.sym("eY")
-    e_ψ = SX.sym("e_ψ")
-    x = vertcat(eY, e_ψ)
+    eψ = SX.sym("eψ")
+    x = vertcat(eY, eψ)
 
     s_sym = SX.sym("s")  # symbolic independent variable
     symbolic_curvature_cubic_spline = SymbolicCubicSpline(n_points=n_points, u=s_sym)
@@ -69,15 +69,15 @@ def bicycle_model_spatial(n_points=20):
 
     # xdot
     eYdot = SX.sym("eYdot")
-    e_ψdot = SX.sym("e_ψdot")
-    xdot = vertcat(eYdot, e_ψdot)
+    eψdot = SX.sym("eψdot")
+    xdot = vertcat(eYdot, eψdot)
 
     beta = atan(lr * tan(delta) / (lf + lr))
     kappa = cos(beta) * tan(delta) / (lf + lr)
 
     # dynamics
-    deY_ds = tan(e_ψ) *(1-kappa_ref_s * eY)
-    deψ_ds = kappa - kappa_ref_s
+    deY_ds = tan(eψ) *(1-kappa_ref_s * eY)
+    deψ_ds = (kappa - kappa_ref_s)*(1 - kappa_ref_s * eY) / cos(eψ)
 
     f_expl = vertcat(
         deY_ds,

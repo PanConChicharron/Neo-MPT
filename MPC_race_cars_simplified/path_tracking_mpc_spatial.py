@@ -153,7 +153,7 @@ class PathTrackingMPCSpatial:
 
         status = acados_solver.solve()
         if status != 0:
-            print("acados returned status {} in closed loop iteration {}.".format(status, i))
+            print("acados returned status {} in closed loop iteration.".format(status))
 
         elapsed = time.time() - t
 
