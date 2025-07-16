@@ -1,138 +1,182 @@
-#
-# Copyright (c) The acados authors.
-#
-# This file is part of acados.
-#
-# The 2-Clause BSD License
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.;
-#
-
-# author: Daniel Kloeser
+# author: Arjun Jagdish Ram
+import numpy as np
+import scipy.linalg
+import time
 
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
+
 from MPC_race_cars_simplified.bicycle_model_spatial import bicycle_model_spatial
-import scipy.linalg
-import numpy as np
+from Utils.clothoid_spline import ClothoidSpline
 
+class PathTrackingMPCSpatial:
+    def __init__(self, Tf, N, n_points):
+        self.Tf = Tf
+        self.N = N
+        self.n_points = n_points
 
-def acados_settings(Tf, N, n_points):
-    # create render arguments
-    ocp = AcadosOcp()
+        self.constraint, self.model, self.acados_solver = self.acados_settings()
 
-    # export model
-    model, constraint = bicycle_model_spatial(n_points)
+    def acados_settings(self):
+        # create render arguments
+        ocp = AcadosOcp()
 
-    # define acados ODE
-    model_ac = AcadosModel()
-    model_ac.f_impl_expr = model.f_impl_expr
-    model_ac.f_expl_expr = model.f_expl_expr
-    model_ac.x = model.x
-    model_ac.xdot = model.xdot
-    model_ac.u = model.u
-    model_ac.p = model.p
-    model_ac.name = model.name
-    ocp.model = model_ac
+        # export model
+        model, constraint = bicycle_model_spatial(self.n_points)
 
-    # dimensions
-    nx = model.x.rows()
-    nu = model.u.rows()
-    ny = nx + nu
-    ny_e = nx
+        # define acados ODE
+        model_ac = AcadosModel()
+        model_ac.f_impl_expr = model.f_impl_expr
+        model_ac.f_expl_expr = model.f_expl_expr
+        model_ac.x = model.x
+        model_ac.xdot = model.xdot
+        model_ac.u = model.u
+        model_ac.p = model.p
+        model_ac.name = model.name
+        ocp.model = model_ac
 
-    # discretization
-    ocp.solver_options.N_horizon = N
+        # dimensions
+        nx = model.x.rows()
+        nu = model.u.rows()
+        ny = nx + nu
+        ny_e = nx
 
-    # set cost
-    Q = np.diag([1e0, 1e-1])
+        # discretization
+        ocp.solver_options.N_horizon = self.N
 
-    R = np.eye(nu)
-    R[0, 0] = 1e-3
+        # set cost
+        Q = np.diag([1e-1, 5e-2])
 
-    Qe = 5*Q
+        R = np.eye(nu)
+        R[0, 0] = 1e-1
 
-    ocp.cost.cost_type = "LINEAR_LS"
-    ocp.cost.cost_type_e = "LINEAR_LS"
-    unscale = N / Tf
+        Qe = 5*Q
 
-    ocp.cost.W = unscale * scipy.linalg.block_diag(Q, R)
-    ocp.cost.W_e = Qe / unscale
+        ocp.cost.cost_type = "LINEAR_LS"
+        ocp.cost.cost_type_e = "LINEAR_LS"
+        unscale = self.N / self.Tf
 
-    Vx = np.zeros((ny, nx))
-    Vx[:nx, :nx] = np.eye(nx)
-    ocp.cost.Vx = Vx
+        ocp.cost.W = unscale * scipy.linalg.block_diag(Q, R)
+        ocp.cost.W_e = Qe / unscale
 
-    Vu = np.zeros((ny, nu))
-    Vu[ny-1, 0] = 1.0
-    ocp.cost.Vu = Vu
+        Vx = np.zeros((ny, nx))
+        Vx[:nx, :nx] = np.eye(nx)
+        ocp.cost.Vx = Vx
 
-    Vx_e = np.zeros((ny_e, nx))
-    Vx_e[:nx, :nx] = np.eye(nx)
-    ocp.cost.Vx_e = Vx_e
+        Vu = np.zeros((ny, nu))
+        Vu[ny-1, 0] = 1.0
+        ocp.cost.Vu = Vu
 
-    # ocp.cost.zl = 100 * np.ones((ns,))
-    # ocp.cost.zu = 100 * np.ones((ns,))
-    # ocp.cost.Zl = 1 * np.ones((ns,))
-    # ocp.cost.Zu = 1 * np.ones((ns,))
+        Vx_e = np.zeros((ny_e, nx))
+        Vx_e[:nx, :nx] = np.eye(nx)
+        ocp.cost.Vx_e = Vx_e
 
-    # set initial references
-    ocp.cost.yref = np.array([0, 0, 0])
-    ocp.cost.yref_e = np.array([0, 0])
+        # set initial references
+        ocp.cost.yref = np.array([0, 0, 0])
+        ocp.cost.yref_e = np.array([0, 0])
 
-    # setting constraints
-    ocp.constraints.lbx = np.array([
-        model.eY_min,
-    ])
-    ocp.constraints.ubx = np.array([
-        model.eY_max,
-    ])
-    ocp.constraints.idxbx = np.array([1])
+        # setting constraints
+        ocp.constraints.lbx = np.array([
+            model.eY_min,
+        ])
+        ocp.constraints.ubx = np.array([
+            model.eY_max,
+        ])
+        ocp.constraints.idxbx = np.array([1])
 
-    ocp.constraints.lbu = np.array([
-        model.delta_min,
-    ])
-    ocp.constraints.ubu = np.array([
-        model.delta_max,
-    ])
-    ocp.constraints.idxbu = np.array([0])
+        ocp.constraints.lbu = np.array([
+            model.delta_min,
+        ])
+        ocp.constraints.ubu = np.array([
+            model.delta_max,
+        ])
+        ocp.constraints.idxbu = np.array([0])
 
-    # set initial condition
-    ocp.constraints.x0 = np.zeros(nx)
-    ocp.parameter_values = np.zeros(model.p.shape[0])
+        # set initial condition
+        ocp.constraints.x0 = np.zeros(nx)
+        ocp.parameter_values = np.zeros(model.p.shape[0])
 
-    # set QP solver and integration
-    ocp.solver_options.tf = Tf
-    # ocp.solver_options.qp_solver = 'FULL_CONDENSING_QPOASES'
-    ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
-    ocp.solver_options.nlp_solver_type = "SQP"
-    ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
-    ocp.solver_options.integrator_type = "ERK"
-    ocp.solver_options.sim_method_num_stages = 4
-    ocp.solver_options.num_steps = 1
-    ocp.solver_options.nlp_solver_max_iter = 20
-    ocp.solver_options.tol = 1e-4
+        # set QP solver and integration
+        ocp.solver_options.tf = self.Tf
+        # ocp.solver_options.qp_solver = 'FULL_CONDENSING_QPOASES'
+        ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
+        ocp.solver_options.nlp_solver_type = "SQP"
+        ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
+        ocp.solver_options.integrator_type = "ERK"
+        ocp.solver_options.sim_method_num_stages = 4
+        ocp.solver_options.num_steps = 1
+        ocp.solver_options.nlp_solver_max_iter = 20
+        ocp.solver_options.tol = 1e-4
 
-    # create solver
-    acados_solver = AcadosOcpSolver(ocp, json_file="acados_ocp.json")
+        # create solver
+        acados_solver = AcadosOcpSolver(ocp, json_file="acados_ocp.json")
 
-    return constraint, model, acados_solver
+        return constraint, model, acados_solver
+
+    def get_optimised_steering(self, x0, clothoid_spline: ClothoidSpline):
+        # load model
+        Sf = clothoid_spline.pathlength
+        constraint, model, acados_solver = self.constraint, self.model, self.acados_solver
+
+        # dimensions
+        nx = model.x.rows()
+        nu = model.u.rows()
+        ny = nx + nu
+
+        # initialize data structs
+        simX = np.zeros((self.N, nx))
+        simU = np.zeros((self.N, nu))
+        s0 = 0
+        tcomp_sum = 0
+        tcomp_max = 0
+
+        acados_solver.set(0, "lbx", x0)
+        acados_solver.set(0, "ubx", x0)
+
+        v_ref = 5.0
+
+        # Extract sub-spline for the current position
+        sub_knots, sub_coefficients = clothoid_spline.get_sub_spline_knots_and_coefficients_from_window_size(s0, self.n_points)
+
+        sref = clothoid_spline.pathlength
+        for j in range(self.N):
+            # Ensure all arrays are properly shaped before concatenation
+            s_interp = np.array([s0 + (sref - s0) * j / self.N])  # Convert scalar to 1D array
+            parameters = np.concatenate((s_interp, sub_knots, sub_coefficients.flatten()), axis=0)
+            yref = np.array([0, 0, 0])
+            acados_solver.set(j, "yref", yref)
+            acados_solver.set(j, "p", parameters)
+        yref_N = np.array([0, 0])
+        acados_solver.set(self.N, "yref", yref_N)
+
+        # solve ocp
+        t = time.time()
+
+        status = acados_solver.solve()
+        if status != 0:
+            print("acados returned status {} in closed loop iteration {}.".format(status, i))
+
+        elapsed = time.time() - t
+
+        # manage timings
+        tcomp_sum += elapsed
+        if elapsed > tcomp_max:
+            tcomp_max = elapsed
+
+        # update initial condition
+        x0 = acados_solver.get(1, "x")
+        acados_solver.set(0, "lbx", x0)
+        acados_solver.set(0, "ubx", x0)
+
+        for idx in range(0, self.N):
+            x = acados_solver.get(idx, "x")
+            u = acados_solver.get(idx, "u")
+
+            simX[idx, :] = x
+            simU[idx, :] = u
+
+        final_idx = int(clothoid_spline.pathlength/(Sf/self.N))
+
+        simX = simX[:final_idx, :]
+        simU = simU[:final_idx, :]
+
+        return simX, simU, Sf, elapsed

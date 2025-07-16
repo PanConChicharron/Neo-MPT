@@ -33,8 +33,6 @@
 import numpy as np
 from MPC_race_cars_simplified.tracks.readDataFcn import getTrack
 
-
-
 def transformProj2Orig(si,eY,eψ,v,filename='LMS_Track.txt'):
     [sref,xref,yref,psiref,_]=getTrack(filename=filename)
     tracklength=sref[-1]

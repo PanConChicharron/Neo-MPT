@@ -34,10 +34,8 @@ class ClothoidSpline:
         sub_knots = self.knots[closest_knot:min(closest_knot+window_size, len(self.knots))]
         sub_coefficients = self.coefficients[:, closest_knot:min(closest_knot+window_size-1, np.shape(self.coefficients)[1])]
 
-        if len(sub_knots) < window_size:
-            import pdb; pdb.set_trace()
-            
-            sub_knots = np.append(sub_knots, np.ones(window_size - len(sub_knots)) * sub_knots[-1])
+        if len(sub_knots) < window_size:            
+            sub_knots = np.append(sub_knots, np.linspace(sub_knots[-1], sub_knots[-1]+100.0, window_size - len(sub_knots)))
             sub_coefficients = np.append(sub_coefficients, np.zeros((4, window_size -1 - np.shape(sub_coefficients)[1])), axis=1)
 
         return sub_knots, sub_coefficients

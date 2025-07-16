@@ -52,6 +52,10 @@ def bicycle_model_spatial(n_points=20):
     lf = 0.030
     lr = 0.010
 
+    ## Lexus params
+    lf = 2.79
+    lr = 0.0
+
     ## CasADi Model
     # set up states & controls
     eY = SX.sym("eY")
