@@ -64,7 +64,10 @@ def bicycle_model_spatial(n_points, lf, lr, w, front_overhang, rear_overhang, le
 
         eY_corners.append(eY_idx)
     
-    x = vertcat(eY, eψ, *eY_corners)
+    x = vertcat(eY,
+                eψ, 
+        #        *eY_corners,
+        )
 
     s_sym = SX.sym("s")  # symbolic independent variable
     symbolic_curvature_cubic_spline = SymbolicCubicSpline(n_points=n_points, u=s_sym)
@@ -84,7 +87,11 @@ def bicycle_model_spatial(n_points, lf, lr, w, front_overhang, rear_overhang, le
     for idx in range(0, len(corner_points), 1):
         eYdot_idx = SX.sym(f"eYdot_{idx}")
         eYdot_corners.append(eYdot_idx)
-    xdot = vertcat(eYdot, eψdot, *eYdot_corners)
+    xdot = vertcat(
+        eYdot,
+        eψdot, 
+    #    *eYdot_corners
+    )
 
     beta = atan(lr * tan(delta) / (lf + lr))
     kappa = cos(beta) * tan(delta) / (lf + lr)
@@ -104,7 +111,7 @@ def bicycle_model_spatial(n_points, lf, lr, w, front_overhang, rear_overhang, le
     f_expl = vertcat(
         deY_ds,
         deψ_ds,
-        *deY_ds_corners
+        #*deY_ds_corners
     )
 
     # Model bounds
