@@ -76,7 +76,7 @@ def bicycle_model_spatial(n_points=20):
     kappa = cos(beta) * tan(delta) / (lf + lr)
 
     # dynamics
-    deY_ds = tan(eψ) *(1-kappa_ref_s * eY)
+    deY_ds = tan(eψ + beta) *(1-kappa_ref_s * eY)
     deψ_ds = (kappa - kappa_ref_s)*(1 - kappa_ref_s * eY) / cos(eψ)
 
     f_expl = vertcat(
