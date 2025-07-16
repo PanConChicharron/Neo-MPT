@@ -74,7 +74,7 @@ class ArraySubscriber(Node):
 
         self.clothoid_spline = ClothoidSpline(self.spline_knots[:-1], self.curvatures)
 
-        x0 = np.array([0., 0.])
+        x0 = np.array([0., 0., 0., 0., 0., 0.])
         simX, simU, Sf, elapsed = self.path_tracking_mpc_spatial.get_optimised_steering(x0, self.clothoid_spline)
 
         eY=simX[:,0]

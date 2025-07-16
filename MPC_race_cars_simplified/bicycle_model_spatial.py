@@ -35,28 +35,38 @@ from casadi import *
 from Utils.symbolic_cubic_spline import SymbolicCubicSpline
 
 
-def bicycle_model_spatial(n_points=20):
+def bicycle_model_spatial(n_points=20, lf=2.79, lr=0.0, w=1.64, front_overhang=1.0, rear_overhang=1.1, left_overhang=0.128, right_overhang=0.128):
     # define structs
     constraint = types.SimpleNamespace()
     model = types.SimpleNamespace()
 
     model_name = "curvilinear_bicycle_model_spatial"
 
-    ## Lexus params
-    lf = 2.79
-    lr = 0.0
     L = lf + lr
-    w = 1.64
-    front_overhang = 1.0
-    rear_overhang = 1.1
-    left_overhang = 0.128
-    right_overhang = 0.128
+
+    corner_points = np.array([
+        [lf + front_overhang, w +right_overhang],  # front right
+        [lf + front_overhang, -w - left_overhang],  # front left
+        [-rear_overhang, -w - left_overhang],  # rear left
+        [-rear_overhang, w + right_overhang],  # rear right
+    ])
 
     ## CasADi Model
     # set up states & controls
     eY = SX.sym("eY")
     eψ = SX.sym("eψ")
-    x = vertcat(eY, eψ)
+
+    eY_corners = []
+
+    # corner points
+    for idx in range(0, len(corner_points), 1):
+        eY_idx = SX.sym(f"eY_{idx}")
+
+        eY_corners.append(eY_idx)
+    
+    x = vertcat(eY, eψ, *eY_corners)
+
+    print(x)
 
     s_sym = SX.sym("s")  # symbolic independent variable
     symbolic_curvature_cubic_spline = SymbolicCubicSpline(n_points=n_points, u=s_sym)
@@ -70,7 +80,13 @@ def bicycle_model_spatial(n_points=20):
     # xdot
     eYdot = SX.sym("eYdot")
     eψdot = SX.sym("eψdot")
-    xdot = vertcat(eYdot, eψdot)
+
+    eYdot_corners = []
+
+    for idx in range(0, len(corner_points), 1):
+        eYdot_idx = SX.sym(f"eYdot_{idx}")
+        eYdot_corners.append(eYdot_idx)
+    xdot = vertcat(eYdot, eψdot, *eYdot_corners)
 
     beta = atan(lr * tan(delta) / (lf + lr))
     kappa = cos(beta) * tan(delta) / (lf + lr)
@@ -79,14 +95,23 @@ def bicycle_model_spatial(n_points=20):
     deY_ds = tan(eψ + beta) *(1-kappa_ref_s * eY)
     deψ_ds = (kappa - kappa_ref_s)*(1 - kappa_ref_s * eY) / cos(eψ)
 
+    deY_ds_corners = []
+
+    #corner point dynamics
+    for corner_point, idx in zip(corner_points, range(0, len(corner_points), 1)):
+        deY_idx = deY_ds +(-sin(eψ) * corner_point[1] + cos(eψ) * corner_point[0]) * deψ_ds
+
+        deY_ds_corners.append(deY_idx)
+
     f_expl = vertcat(
         deY_ds,
         deψ_ds,
+        *deY_ds_corners
     )
 
     # Model bounds
-    model.eY_min = -0.12  # width of the track [m]
-    model.eY_max = 0.12  # width of the track [m]
+    model.eY_min = -1.5  # width of the track [m]
+    model.eY_max = 1.5  # width of the track [m]
 
     # input bounds
     model.delta_min = -np.pi/4  # minimum steering angle [rad]

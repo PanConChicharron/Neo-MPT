@@ -44,7 +44,7 @@ class PathTrackingMPCSpatial:
         ocp.solver_options.N_horizon = self.N
 
         # set cost
-        Q = np.diag([1e-1, 5e-2])
+        Q = np.diag([1e-1, 5e-2, 0., 0., 0., 0.])
 
         R = np.eye(nu)
         R[0, 0] = 1e-1
@@ -71,17 +71,25 @@ class PathTrackingMPCSpatial:
         ocp.cost.Vx_e = Vx_e
 
         # set initial references
-        ocp.cost.yref = np.array([0, 0, 0])
-        ocp.cost.yref_e = np.array([0, 0])
+        ocp.cost.yref = np.array([0, 0, 0., 0., 0., 0., 0])
+        ocp.cost.yref_e = np.array([0, 0, 0., 0., 0., 0.])
 
         # setting constraints
         ocp.constraints.lbx = np.array([
             model.eY_min,
+            model.eY_min,
+            model.eY_min,
+            model.eY_min,
+            model.eY_min,
         ])
         ocp.constraints.ubx = np.array([
             model.eY_max,
+            model.eY_max,
+            model.eY_max,
+            model.eY_max,
+            model.eY_max,
         ])
-        ocp.constraints.idxbx = np.array([1])
+        ocp.constraints.idxbx = np.array([1, 2, 3, 4, 5])
 
         ocp.constraints.lbu = np.array([
             model.delta_min,
@@ -142,10 +150,10 @@ class PathTrackingMPCSpatial:
             # Ensure all arrays are properly shaped before concatenation
             s_interp = np.array([s0 + (sref - s0) * j / self.N])  # Convert scalar to 1D array
             parameters = np.concatenate((s_interp, sub_knots, sub_coefficients.flatten()), axis=0)
-            yref = np.array([0, 0, 0])
+            yref = np.array([0, 0, 0., 0., 0., 0., 0])
             acados_solver.set(j, "yref", yref)
             acados_solver.set(j, "p", parameters)
-        yref_N = np.array([0, 0])
+        yref_N = np.array([0, 0, 0., 0., 0., 0.])
         acados_solver.set(self.N, "yref", yref_N)
 
         # solve ocp
