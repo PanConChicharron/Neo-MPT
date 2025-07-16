@@ -16,7 +16,6 @@ from autoware_planning_msgs.msg import Trajectory
 
 from Utils.clothoid_spline import ClothoidSpline
 from MPC_race_cars_simplified.path_tracking_mpc_spatial import PathTrackingMPCSpatial
-from MPC_race_cars_simplified.time2spatial import transformProj2Orig
 
 class ArraySubscriber(Node):
     def __init__(self):
