@@ -83,6 +83,8 @@ class ArraySubscriber(Node):
 
         self.clothoid_spline = ClothoidSpline(self.spline_knots, self.curvatures)
 
+        self.body_points = msg.body_points
+
         x0 = np.array([
             0., 
             0., 
