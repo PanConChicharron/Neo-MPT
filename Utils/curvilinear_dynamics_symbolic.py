@@ -90,3 +90,54 @@ curvilinear_dynamics_spatial = sp.lambdify(
     (eY_prime, ePsi_prime),
     "numpy"
 )
+
+# =============================================================
+# 8. Arbitrary body points in curvilinear coordinates
+# =============================================================
+N_points = 3
+s_i = sp.symbols(f's_i0:{N_points}', real=True)
+eY_i = sp.symbols(f'eY_i0:{N_points}', real=True)
+K_ref_i = sp.symbols(f'K_ref_i0:{N_points}', real=True)  # curvature at each point
+
+# Use vehicle ṡ from earlier (symbolic)
+s_dot_vehicle_expr = s_dot  # s_dot already defined in main vehicle dynamics
+
+# Time derivatives for each point
+s_dot_points = []
+eY_dot_points = []
+for k in range(N_points):
+    s_dot_k = sp.simplify(v / (1 - K_ref_i[k] * eY_i[k]))
+    eY_dot_k = sp.simplify(v * K * (1 - K_ref_i[k] * eY_i[k]))
+    s_dot_points.append(s_dot_k)
+    eY_dot_points.append(eY_dot_k)
+
+# Spatial derivatives wrt vehicle s
+s_prime_points = [sp.simplify(s_dot_points[k] / s_dot_vehicle_expr) for k in range(N_points)]
+eY_prime_points = [sp.simplify(eY_dot_points[k] / s_dot_vehicle_expr) for k in range(N_points)]
+
+# =============================================================
+# 9. Display body point derivatives
+# =============================================================
+print("\n=== BODY POINTS TIME DERIVATIVES ===")
+for k in range(N_points):
+    print(f"Point {k}: ṡ_i = {s_dot_points[k]}, eẎ_i = {eY_dot_points[k]}")
+
+print("\n=== BODY POINTS SPATIAL DERIVATIVES wrt vehicle s ===")
+for k in range(N_points):
+    print(f"Point {k}: s_i' = {s_prime_points[k]}, eY_i' = {eY_prime_points[k]}")
+
+# =============================================================
+# 10. Lambdify for numerical evaluation (body points)
+# =============================================================
+# Note: vehicle center state (eY, ePsi, K_ref) appears in s_dot_vehicle_expr
+curvilinear_points_time = [
+    sp.lambdify((v, K, eY_i[k], K_ref_i[k]), (s_dot_points[k], eY_dot_points[k]), 'numpy')
+    for k in range(N_points)
+]
+
+curvilinear_points_spatial = [
+    sp.lambdify((v, K, eY_i[k], K_ref_i[k], eY, ePsi, K_ref),
+                (s_prime_points[k], eY_prime_points[k]),
+                'numpy')
+    for k in range(N_points)
+]
