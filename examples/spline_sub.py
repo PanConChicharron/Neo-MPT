@@ -81,7 +81,7 @@ class ArraySubscriber(Node):
         self.spline_coeffs_y = np.array(msg.y_coeffs.data).reshape(4, n_segments)
         self.curvatures = np.array(msg.curvatures.data)
 
-        self.clothoid_spline = ClothoidSpline(self.spline_knots[:-1], self.curvatures)
+        self.clothoid_spline = ClothoidSpline(self.spline_knots, self.curvatures)
 
         x0 = np.array([
             0., 
