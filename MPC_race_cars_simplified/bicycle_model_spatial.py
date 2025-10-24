@@ -98,7 +98,7 @@ def bicycle_model_spatial(n_points, lf, lr, w, front_overhang, rear_overhang, le
 
     # dynamics
     deY_ds = tan(eψ + beta) *(1-kappa_ref_s * eY)
-    deψ_ds = (kappa - kappa_ref_s)*(1 - kappa_ref_s * eY) / cos(eψ)
+    deψ_ds = kappa*(1 - kappa_ref_s * eY) / cos(eψ) - kappa_ref_s
 
     deY_ds_corners = []
 
