@@ -31,6 +31,8 @@ class ArraySubscriber(Node):
 
         self.Sf = 100
 
+        self.num_body_points = 10
+
         self.spline_knots_callback_obj = self.create_subscription(
             SplineDebug,
             '/planning/scenario_planning/lane_driving/motion_planning/path_optimizer/debug/spline_coefficients',
@@ -61,7 +63,7 @@ class ArraySubscriber(Node):
         self.left_overhang=0.128
         self.right_overhang=0.128
 
-        self.path_tracking_mpc_spatial_with_body_points = PathTrackingMPCSpatialWithBodyPoints(self.Sf, self.N, self.N, self.lf, self.lr, self.w, self.front_overhang, self.rear_overhang, self.left_overhang, self.right_overhang)
+        self.path_tracking_mpc_spatial_with_body_points = PathTrackingMPCSpatialWithBodyPoints(self.Sf, self.N, self.N, self.num_body_points, self.lf, self.lr, self.w, self.front_overhang, self.rear_overhang, self.left_overhang, self.right_overhang)
 
         self.optimised_steering = None
         self.optimised_MPT_trajectory = None
@@ -85,23 +87,25 @@ class ArraySubscriber(Node):
 
         self.body_points = msg.body_points
 
+
         x0 = np.array([
             0., 
-            0., 
-            # self.w/2 + self.right_overhang, 
-            # -self.w/2 - self.left_overhang, 
-            # -self.w/2 - self.left_overhang, 
-            # self.w/2 + self.right_overhang,
+            0.,
         ])
+        
+        s_array = [point.x for point in self.body_points]
+        eY_array = [point.y for point in self.body_points]
+        body_points_array = np.concatenate((s_array, eY_array))
+
+        x0 = np.concatenate((x0, body_points_array))
+
         simX, simU, Sf, elapsed = self.path_tracking_mpc_spatial_with_body_points.get_optimised_steering(x0, self.clothoid_spline)
 
         eY=simX[:,0]
         eψ=simX[:,1]
 
-        # front_left_corner = simX[:,2]
-        # front_right_corner = simX[:,3]
-        # rear_right_corner = simX[:,4]
-        # rear_left_corner = simX[:,5]
+        s_body_points_N = simX[:, 2 : 2 + self.num_body_points]
+        eY_body_points_N = simX[:, 2 + self.num_body_points : ]
 
         # Rasterize the spline and plot the x, y spline and the optimized states (eY, eψ)
 
@@ -148,8 +152,8 @@ class ArraySubscriber(Node):
             self.ax[1, 1].clear()
 
         # Plot trajectory
-        self.ax[0, 0].plot(x, y, label='Optimized Trajectory (global)')
-        self.ax[0, 0].plot(x_ref, y_ref, '--', label='Reference Spline')
+        self.ax[0, 0].plot(x[0:50], y[0:50], label='Optimized Trajectory (global)')
+        self.ax[0, 0].plot(x_ref[0:50], y_ref[0:50], '--', label='Reference Spline')
 
         # For a straight road, you can simply offset by ±road_width/2 in the normal direction:
         left_x = x_ref - self.path_tracking_mpc_spatial_with_body_points.model.eY_max * np.sin(psi_ref)
@@ -157,39 +161,32 @@ class ArraySubscriber(Node):
         right_x = x_ref - self.path_tracking_mpc_spatial_with_body_points.model.eY_min * np.sin(psi_ref)
         right_y = y_ref + self.path_tracking_mpc_spatial_with_body_points.model.eY_min * np.cos(psi_ref)
 
-        self.ax[0, 0].plot(left_x, left_y, 'k--', alpha=0.5, label='Left Road Boundary')
-        self.ax[0, 0].plot(right_x, right_y, 'k--', alpha=0.5, label='Right Road Boundary')
-        
-        if self.optimised_MPT_trajectory is not None:
-            self.ax[0, 0].plot([point.pose.position.x for point in self.optimised_MPT_trajectory], [point.pose.position.y for point in self.optimised_MPT_trajectory], label='MPT Trajectory')
+        self.ax[0, 0].plot(left_x[0:50], left_y[0:50], 'k--', alpha=0.5, label='Left Road Boundary')
+        self.ax[0, 0].plot(right_x[0:50], right_y[0:50], 'k--', alpha=0.5, label='Right Road Boundary')
 
-            # Plot the four corners
-            # for i in range(N):
-            #     cosine, sine = np.cos(psi[i]), np.sin(psi[i])
-            #     rot = np.array([[cosine, -sine], [sine, cosine]])
+        if self.optimised_MPT_trajectory is None:
+            return
 
-                # cur_front_left_corner = np.array([x[i], y[i]]) + np.matmul(rot, np.array([(self.lf + self.front_overhang), front_left_corner[i]]))
-                # cur_front_right_corner = np.array([x[i], y[i]]) + np.matmul(rot, np.array([(self.lf + self.front_overhang), front_right_corner[i]]))
-                # cur_rear_right_corner = np.array([x[i], y[i]]) + np.matmul(rot, np.array([-(self.rear_overhang), rear_right_corner[i]]))
-                # cur_rear_left_corner = np.array([x[i], y[i]]) + np.matmul(rot, np.array([-(self.rear_overhang), rear_left_corner[i]]))
+        self.ax[0, 0].plot([point.pose.position.x for point in self.optimised_MPT_trajectory[0:50]], [point.pose.position.y for point in self.optimised_MPT_trajectory[0:50]], label='MPT Trajectory')
 
-                # self.ax[0, 0].plot(
-                # [
-                #     cur_front_left_corner[0],
-                #     cur_front_right_corner[0],
-                #     cur_rear_right_corner[0],
-                #     cur_rear_left_corner[0],
-                #     cur_front_left_corner[0],
-                # ], 
-                # [
-                #     cur_front_left_corner[1],
-                #     cur_front_right_corner[1],
-                #     cur_rear_right_corner[1],
-                #     cur_rear_left_corner[1],
-                #     cur_front_left_corner[1],
-                # ],
-                # 'r-', alpha=0.5
-                # )
+        # Plot the four corners
+        for s_body_points, eY_body_points in zip(s_body_points_N, eY_body_points_N):
+            x_corners = []
+            y_corners = []
+            for s_body_point, eY_body_point in zip(s_body_points, eY_body_points):
+                dx_ds = self.spline_x.derivative(1)(s_body_point)
+                dy_ds = self.spline_y.derivative(1)(s_body_point)
+                psi_ref_s_body_point = np.arctan2(dy_ds, dx_ds)
+                x_corners.append(self.spline_x(s_body_point) - eY_body_point * np.sin(psi_ref_s_body_point))
+                y_corners.append(self.spline_y(s_body_point) + eY_body_point * np.cos(psi_ref_s_body_point))
+            
+            x_corners.append(x_corners[0])  # Close the rectangle
+            y_corners.append(y_corners[0])  # Close the rectangle
+
+            # import pdb; pdb.set_trace()
+            
+            self.ax[0, 0].plot(x_corners, y_corners)
+
 
         self.ax[0, 0].set_xlabel('X [m]')
         self.ax[0, 0].set_ylabel('Y [m]')
@@ -203,20 +200,22 @@ class ArraySubscriber(Node):
         # self.ax[0, 1].axis('equal')
         self.ax[0, 1].legend()
 
-        if self.optimised_steering is not None:
-            temp_s = np.linspace(0, Sf, len(self.optimised_steering))
+        if self.optimised_steering is None:
+            return
 
-            self.ax[0, 1].plot(temp_s, self.optimised_steering, label='Optimized Steering from autoware')
-            self.ax[0, 1].set_xlabel('s [m]')
-            self.ax[0, 1].set_ylabel('delta [rad]')
-            # self.ax[0, 1].axis('equal')
-            self.ax[0, 1].legend()
+        temp_s = np.linspace(0, Sf, len(self.optimised_steering))
+
+        self.ax[0, 1].plot(temp_s, self.optimised_steering, label='Optimized Steering from autoware')
+        self.ax[0, 1].set_xlabel('s [m]')
+        self.ax[0, 1].set_ylabel('delta [rad]')
+        # self.ax[0, 1].axis('equal')
+        self.ax[0, 1].legend()
 
         self.ax[1, 0].plot(s, eY, label='eY')
-        # self.ax[1, 0].plot(s, front_left_corner, label='eY_lf')
-        # self.ax[1, 0].plot(s, front_right_corner, label='eY_rf')
-        # self.ax[1, 0].plot(s, rear_left_corner, label='eY_lr')
-        # self.ax[1, 0].plot(s, rear_right_corner, label='eY_rr')
+        self.ax[1, 0].plot(s, eY_body_points_N[:,0], label='eY front left')
+        self.ax[1, 0].plot(s, eY_body_points_N[:,1], label='eY front left')
+        self.ax[1, 0].plot(s, eY_body_points_N[:,5], label='eY front left')
+        self.ax[1, 0].plot(s, eY_body_points_N[:,6], label='eY front left')
         self.ax[1, 0].plot(s, self.path_tracking_mpc_spatial_with_body_points.model.eY_min * np.ones_like(s), '--', label='eY_min')
         self.ax[1, 0].plot(s, self.path_tracking_mpc_spatial_with_body_points.model.eY_max * np.ones_like(s), '--', label='eY_max')
         self.ax[1, 0].set_xlabel('s [m]')
@@ -225,7 +224,6 @@ class ArraySubscriber(Node):
 
         self.fig.canvas.draw_idle()
         self.fig.canvas.flush_events()
-        # plt.pause(0.001)
 
 def main(args=None):
     rclpy.init(args=args)

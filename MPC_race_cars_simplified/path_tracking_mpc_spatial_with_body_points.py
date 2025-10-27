@@ -5,14 +5,15 @@ import time
 
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 
-from MPC_race_cars_simplified.bicycle_model_spatial_with_body_points import bicycle_model_spatial
+from MPC_race_cars_simplified.bicycle_model_spatial_with_body_points import bicycle_model_spatial_with_body_points
 from Utils.clothoid_spline import ClothoidSpline
 
 class PathTrackingMPCSpatialWithBodyPoints:
-    def __init__(self, Tf, N, n_points, lf, lr, w, front_overhang, rear_overhang, left_overhang, right_overhang):
+    def __init__(self, Tf, N, n_points, num_body_points, lf, lr, w, front_overhang, rear_overhang, left_overhang, right_overhang):
         self.Tf = Tf
         self.N = N
         self.n_points = n_points
+        self.num_body_points = num_body_points
 
         self.lf = lf
         self.lr = lr
@@ -29,7 +30,7 @@ class PathTrackingMPCSpatialWithBodyPoints:
         ocp = AcadosOcp()
 
         # export model
-        model, constraint = bicycle_model_spatial(self.n_points, lf, lr, w, front_overhang, rear_overhang, left_overhang, right_overhang)
+        model, constraint = bicycle_model_spatial_with_body_points(self.n_points, self.num_body_points, lf, lr, w, front_overhang, rear_overhang, left_overhang, right_overhang)
 
         # define acados ODE
         model_ac = AcadosModel()
@@ -52,7 +53,7 @@ class PathTrackingMPCSpatialWithBodyPoints:
         ocp.solver_options.N_horizon = self.N
 
         # set cost
-        Q = np.diag([1e-2, 1e-2])
+        Q = np.diag([1e-2, 1e-2] + [0.] * self.num_body_points + [0.]*self.num_body_points)
 
         R = np.eye(nu)
         R[0, 0] = 2e-1
@@ -79,17 +80,17 @@ class PathTrackingMPCSpatialWithBodyPoints:
         ocp.cost.Vx_e = Vx_e
 
         # set initial references
-        ocp.cost.yref = np.array([0, 0, 0.])
-        ocp.cost.yref_e = np.array([0, 0])
+        ocp.cost.yref = np.array([0, 0, ] + [0.]*self.num_body_points + [0.]*self.num_body_points + [0.])
+        ocp.cost.yref_e = np.array([0, 0] + [0.]*self.num_body_points + [0.]*self.num_body_points)
 
         # setting constraints
-        ocp.constraints.lbx = np.array([
-            model.eY_min + self.w/2 + self.right_overhang,
-        ])
-        ocp.constraints.ubx = np.array([
-            model.eY_max - self.w/2 - self.left_overhang,
-        ])
-        ocp.constraints.idxbx = np.array([1])
+        idxbx_eY = [0]  # main eY
+        idxbx_eY += list(range(2 + self.num_body_points, 2 + 2*self.num_body_points))
+
+        ocp.constraints.idxbx = np.array(idxbx_eY)
+
+        ocp.constraints.lbx = np.array([model.eY_min] * len(idxbx_eY))
+        ocp.constraints.ubx = np.array([model.eY_max] * len(idxbx_eY))
 
         ocp.constraints.lbu = np.array([
             model.delta_min,
@@ -140,8 +141,6 @@ class PathTrackingMPCSpatialWithBodyPoints:
         acados_solver.set(0, "lbx", x0)
         acados_solver.set(0, "ubx", x0)
 
-        v_ref = 5.0
-
         # Extract sub-spline for the current position
         sub_knots, sub_coefficients = clothoid_spline.get_sub_spline_knots_and_coefficients_from_window_size(s0, self.n_points)
 
@@ -150,10 +149,10 @@ class PathTrackingMPCSpatialWithBodyPoints:
             # Ensure all arrays are properly shaped before concatenation
             s_interp = np.array([s0 + (sref - s0) * j / self.N])  # Convert scalar to 1D array
             parameters = np.concatenate((s_interp, sub_knots, sub_coefficients.flatten()), axis=0)
-            yref = np.array([0, 0, 0.])
+            yref = np.array([0, 0] + [0.0]*self.num_body_points + [0.0]*self.num_body_points + [0.] )
             acados_solver.set(j, "yref", yref)
             acados_solver.set(j, "p", parameters)
-        yref_N = np.array([0, 0])
+        yref_N = np.array([0, 0] + [0.0]*self.num_body_points + [0.0]*self.num_body_points)
         acados_solver.set(self.N, "yref", yref_N)
 
         # solve ocp

@@ -17,17 +17,6 @@ __version__ = "1.0.0"
 __author__ = "Daniel Kloeser (original), Modified for moving window approach"
 __license__ = "2-Clause BSD License"
 
-# Import main modules
-from . import bicycle_model
-from . import path_tracking_mpc
-from . import plotFcn
-from . import time2spatial
-from . import tracks
-
-# Import commonly used functions
-from .bicycle_model import bicycle_model
-from .bicycle_model_spatial import bicycle_model_spatial
-
 __all__ = [
     'bicycle_model',
     'MovingWindowBicycleModel', 
