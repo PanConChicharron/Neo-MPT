@@ -94,29 +94,31 @@ curvilinear_dynamics_spatial = sp.lambdify(
 # =============================================================
 # 8. Arbitrary body points in curvilinear coordinates
 # =============================================================
-N_points = 3
+N_points = 4  # number of body points (e.g., corners)
 s_i = sp.symbols(f's_i0:{N_points}', real=True)
 eY_i = sp.symbols(f'eY_i0:{N_points}', real=True)
-K_ref_i = sp.symbols(f'K_ref_i0:{N_points}', real=True)  # curvature at each point
+K_ref_i = sp.symbols(f'K_ref_i0:{N_points}', real=True)  # reference curvature at each point
 
-# Use vehicle ṡ from earlier (symbolic)
-s_dot_vehicle_expr = s_dot  # s_dot already defined in main vehicle dynamics
-
-# Time derivatives for each point
+# =============================================================
+# 9. Body points time derivatives (fully derived)
+# =============================================================
 s_dot_points = []
 eY_dot_points = []
+
 for k in range(N_points):
-    s_dot_k = sp.simplify(v / (1 - K_ref_i[k] * eY_i[k]))
-    eY_dot_k = sp.simplify(v * K * (1 - K_ref_i[k] * eY_i[k]))
+    # Time derivative along the spline (curvilinear)
+    s_dot_k = sp.simplify(v * sp.cos(ePsi) / (1 - K_ref_i[k] * eY_i[k]))
+    # Lateral deviation derivative
+    eY_dot_k = sp.simplify(v * sp.sin(ePsi))
     s_dot_points.append(s_dot_k)
     eY_dot_points.append(eY_dot_k)
 
-# Spatial derivatives wrt vehicle s
-s_prime_points = [sp.simplify(s_dot_points[k] / s_dot_vehicle_expr) for k in range(N_points)]
-eY_prime_points = [sp.simplify(eY_dot_points[k] / s_dot_vehicle_expr) for k in range(N_points)]
+# Spatial derivatives wrt vehicle center s
+s_prime_points = [sp.simplify(s_dot_points[k] / s_dot) for k in range(N_points)]
+eY_prime_points = [sp.simplify(eY_dot_points[k] / s_dot) for k in range(N_points)]
 
 # =============================================================
-# 9. Display body point derivatives
+# 10. Display body point derivatives
 # =============================================================
 print("\n=== BODY POINTS TIME DERIVATIVES ===")
 for k in range(N_points):
@@ -127,17 +129,14 @@ for k in range(N_points):
     print(f"Point {k}: s_i' = {s_prime_points[k]}, eY_i' = {eY_prime_points[k]}")
 
 # =============================================================
-# 10. Lambdify for numerical evaluation (body points)
+# 11. Lambdify for numerical evaluation (body points)
 # =============================================================
-# Note: vehicle center state (eY, ePsi, K_ref) appears in s_dot_vehicle_expr
 curvilinear_points_time = [
-    sp.lambdify((v, K, eY_i[k], K_ref_i[k]), (s_dot_points[k], eY_dot_points[k]), 'numpy')
+    sp.lambdify((v, ePsi, eY_i[k], K_ref_i[k]), (s_dot_points[k], eY_dot_points[k]), 'numpy')
     for k in range(N_points)
 ]
 
 curvilinear_points_spatial = [
-    sp.lambdify((v, K, eY_i[k], K_ref_i[k], eY, ePsi, K_ref),
-                (s_prime_points[k], eY_prime_points[k]),
-                'numpy')
+    sp.lambdify((v, ePsi, eY_i[k], K_ref_i[k]), (s_prime_points[k], eY_prime_points[k]), 'numpy')
     for k in range(N_points)
 ]
