@@ -16,6 +16,7 @@ from autoware_internal_debug_msgs.msg import SplineDebug
 from autoware_planning_msgs.msg import Trajectory
 
 from Utils.clothoid_spline import ClothoidSpline
+from scipy.interpolate import CubicSpline
 from MPC_race_cars_simplified.path_tracking_mpc_spatial_with_body_points import PathTrackingMPCSpatialWithBodyPoints
 
 class ArraySubscriber(Node):
@@ -31,7 +32,7 @@ class ArraySubscriber(Node):
 
         self.Sf = 100
 
-        self.num_body_points = 10
+        self.num_body_points = 4
 
         self.spline_knots_callback_obj = self.create_subscription(
             SplineDebug,
@@ -63,7 +64,9 @@ class ArraySubscriber(Node):
         self.left_overhang=0.128
         self.right_overhang=0.128
 
+        print("Initializing MPC...")
         self.path_tracking_mpc_spatial_with_body_points = PathTrackingMPCSpatialWithBodyPoints(self.Sf, self.N, self.N, self.num_body_points, self.lf, self.lr, self.w, self.front_overhang, self.rear_overhang, self.left_overhang, self.right_overhang)
+        print("MPC Initialized.")
 
         self.optimised_steering = None
         self.optimised_MPT_trajectory = None
@@ -75,7 +78,6 @@ class ArraySubscriber(Node):
         self.optimised_MPT_trajectory = np.array([point for point in msg.points])
 
     def spline_knots_callback(self, msg):
-        t = time.time()
         self.spline_knots = np.array(msg.knots.data)
         # Reverse coefficient order to match SciPy's PPoly expectations
         n_segments = len(self.spline_knots) - 1
@@ -83,9 +85,13 @@ class ArraySubscriber(Node):
         self.spline_coeffs_y = np.array(msg.y_coeffs.data).reshape(4, n_segments)
         self.curvatures = np.array(msg.curvatures.data)
 
+        import pdb; pdb.set_trace()
+        self.x_ref_spline = CubicSpline(self.spline_knots[:-1], self.spline_coeffs_x)
+        self.y_ref_spline = CubicSpline(self.spline_knots[:-1], self.spline_coeffs_y)
+        self.psi_ref_spline = CubicSpline(self.spline_knots[:-1], self.spline_coeffs_y)
         self.clothoid_spline = ClothoidSpline(self.spline_knots, self.curvatures)
 
-        self.body_points = msg.body_points
+        self.body_points_curvilinear = msg.body_points
 
 
         x0 = np.array([
@@ -93,13 +99,22 @@ class ArraySubscriber(Node):
             0.,
         ])
         
-        s_array = [point.x for point in self.body_points]
-        eY_array = [point.y for point in self.body_points]
-        body_points_array = np.concatenate((s_array, eY_array))
+        s_array = [point.x for point in self.body_points_curvilinear]
+        eY_array = [point.y for point in self.body_points_curvilinear]
+        body_points_curvilinear_array = np.concatenate((s_array, eY_array))
 
-        x0 = np.concatenate((x0, body_points_array))
+        x = [point.x for point in self.body_points]
+        y = [point.y for point in self.body_points]
+        body_points_array = np.concatenate((x, y))
 
-        simX, simU, Sf, elapsed = self.path_tracking_mpc_spatial_with_body_points.get_optimised_steering(x0, self.clothoid_spline)
+        x0 = np.concatenate((x0, body_points_curvilinear_array))
+
+        t = time.time()
+        simX, simU, Sf, elapsed = self.path_tracking_mpc_spatial_with_body_points.get_optimised_steering(x0, body_points_array, self.x_ref_spline, self.y_ref_spline, self.psi_ref_spline, self.clothoid_spline)
+        elapsed_time = time.time() - t
+        print(f"Time taken for MPC: {elapsed_time:.4f} seconds")
+
+        t = time.time()
 
         eY=simX[:,0]
         eψ=simX[:,1]

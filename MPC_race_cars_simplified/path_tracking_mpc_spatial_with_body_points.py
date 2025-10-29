@@ -117,11 +117,12 @@ class PathTrackingMPCSpatialWithBodyPoints:
         ocp.solver_options.tol = 1e-4
 
         # create solver
-        acados_solver = AcadosOcpSolver(ocp, json_file="acados_ocp.json")
+        print("Creating acados solver...")
+        acados_solver = AcadosOcpSolver(ocp, json_file='acados_ocp.json', build=False, generate=False)
 
         return constraint, model, acados_solver
 
-    def get_optimised_steering(self, x0, clothoid_spline: ClothoidSpline):
+    def get_optimised_steering(self, x0, body_points_array, x_ref_spline, y_ref_spline, psi_ref_spline, clothoid_spline: ClothoidSpline):
         # load model
         Sf = clothoid_spline.pathlength
         constraint, model, acados_solver = self.constraint, self.model, self.acados_solver
@@ -142,13 +143,16 @@ class PathTrackingMPCSpatialWithBodyPoints:
         acados_solver.set(0, "ubx", x0)
 
         # Extract sub-spline for the current position
-        sub_knots, sub_coefficients = clothoid_spline.get_sub_spline_knots_and_coefficients_from_window_size(s0, self.n_points)
+        x_ref_sub_knots, x_ref_sub_coefficients = x_ref_spline.get_sub_spline_knots_and_coefficients_from_window_size(s0, self.n_points)
+        y_ref_sub_knots, y_ref_sub_coefficients = y_ref_spline.get_sub_spline_knots_and_coefficients_from_window_size(s0, self.n_points)
+        psi_ref_sub_knots, psi_ref_sub_coefficients = psi_ref_spline.get_sub_spline_knots_and_coefficients_from_window_size(s0, self.n_points)
+        clothoid_sub_knots, clothoid_sub_coefficients = clothoid_spline.get_sub_spline_knots_and_coefficients_from_window_size(s0, self.n_points)
 
         sref = clothoid_spline.pathlength
         for j in range(self.N):
             # Ensure all arrays are properly shaped before concatenation
             s_interp = np.array([s0 + (sref - s0) * j / self.N])  # Convert scalar to 1D array
-            parameters = np.concatenate((s_interp, sub_knots, sub_coefficients.flatten()), axis=0)
+            parameters = np.concatenate((s_interp, x_ref_sub_knots, x_ref_sub_coefficients, y_ref_sub_knots, y_ref_sub_coefficients, psi_ref_sub_knots, psi_ref_sub_coefficients, clothoid_sub_knots, clothoid_sub_coefficients.flatten(), body_points_array), axis=0)
             yref = np.array([0, 0] + [0.0]*self.num_body_points + [0.0]*self.num_body_points + [0.] )
             acados_solver.set(j, "yref", yref)
             acados_solver.set(j, "p", parameters)

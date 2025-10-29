@@ -34,10 +34,20 @@ def bicycle_model_spatial_with_body_points(n_points, num_body_points, lf, lr, w,
         eY_body_points,
     )
 
+    x_body_points = SX.sym("x_body_points", num_body_points)
+    y_body_points = SX.sym("y_body_points", num_body_points)
+
     s_sym = SX.sym("s")  # symbolic independent variable
-    symbolic_curvature_cubic_spline = SymbolicCubicSpline(n_points=n_points, u=s_sym)
-    kappa_ref_s = symbolic_curvature_cubic_spline.get_symbolic_spline()
-    p = vertcat(s_sym, symbolic_curvature_cubic_spline.get_parameters())
+    x_ref_s_symbolic_curvature_cubic_spline = SymbolicCubicSpline(n_points=n_points, u=s_sym)
+    x_ref_s = x_ref_s_symbolic_curvature_cubic_spline.get_symbolic_spline()
+    y_ref_s_symbolic_curvature_cubic_spline = SymbolicCubicSpline(n_points=n_points, u=s_sym)
+    y_ref_s = y_ref_s_symbolic_curvature_cubic_spline.get_symbolic_spline()
+    psi_ref_s_symbolic_curvature_cubic_spline = SymbolicCubicSpline(n_points=n_points, u=s_sym)
+    psi_ref_s = psi_ref_s_symbolic_curvature_cubic_spline.get_symbolic_spline()
+    kappa_ref_s_symbolic_curvature_cubic_spline = SymbolicCubicSpline(n_points=n_points, u=s_sym)
+    kappa_ref_s = kappa_ref_s_symbolic_curvature_cubic_spline.get_symbolic_spline()
+    
+    p = vertcat(s_sym, x_ref_s_symbolic_curvature_cubic_spline.get_parameters(), y_ref_s_symbolic_curvature_cubic_spline.get_parameters(), psi_ref_s_symbolic_curvature_cubic_spline.get_parameters(), kappa_ref_s_symbolic_curvature_cubic_spline.get_parameters(), x_body_points, y_body_points)
 
     # controls
     delta = SX.sym("delta")
@@ -71,15 +81,21 @@ def bicycle_model_spatial_with_body_points(n_points, num_body_points, lf, lr, w,
         s_i = s_body_points[i]
         eY_i = eY_body_points[i]
 
+        x_body = x_body_points[i]
+        y_body = y_body_points[i]
+
         # evaluate curvature spline at body point s position
-        kappa_ref_s_i = substitute(symbolic_curvature_cubic_spline.get_symbolic_spline(), s_sym, s_i)
+        x_ref_body_s_i = substitute(x_ref_s, s_sym, s_i)
+        y_ref_body_s_i = substitute(y_ref_s, s_sym, s_i)
+        psi_ref_body_s_i = substitute(psi_ref_s, s_sym, s_i)
+        kappa_ref_s_i = substitute(kappa_ref_s, s_sym, s_i)
 
         # dynamics for body point s position
-        ds_i_ds = (kappa_ref_s * eY - 1) / ((kappa_ref_s_i * eY_i - 1) * cos(eψ))
+        ds_i_ds = -(kappa*(eY_i*cos(eψ + psi_ref_body_s_i) + (x_ref_body_s_i-x_body)*sin(eψ) + (y_ref_body_s_i-y_body)*cos(eψ) - cos(beta + eψ))*(kappa_ref_s*eY - 1)/((kappa_ref_s_i*eY_i - 1)*cos(beta + eψ)))
         ds_body_points_ds.append(ds_i_ds)
 
         # dynamics for body point eY position
-        deY_i_ds = kappa*(kappa_ref_s*eY - 1)*(kappa_ref_s_i*eY_i - 1)/cos(eψ)
+        deY_i_ds = (kappa*(eY*sin(eψ + psi_ref_body_s_i) + x_body*cos(eψ) - y_body*sin(eψ) - x_ref_body_s_i*cos(eψ) + y_ref_body_s_i*sin(eψ)) - sin(beta + eψ))*(kappa_ref_s*eY - 1)/cos(beta + eψ)
         deY_body_points_ds.append(deY_i_ds)
 
     f_expl = vertcat(

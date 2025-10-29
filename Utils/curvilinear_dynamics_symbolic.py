@@ -40,8 +40,8 @@ K = sp.symbols('K')                           # symbolic curvature
 # 2. Kinematic bicycle velocities using ePsi + psi_r
 # =============================================================
 psi_subbed = ePsi + psi_r  # replace psi - psi_r with ePsi
-xdot = v * sp.cos(psi_subbed)
-ydot = v * sp.sin(psi_subbed)
+xdot = v * sp.cos(psi_subbed + beta)
+ydot = v * sp.sin(psi_subbed + beta)
 psidot = v * K
 
 # =============================================================
@@ -94,7 +94,7 @@ curvilinear_dynamics_spatial = sp.lambdify(
 # =============================================================
 # 8. Arbitrary body points in curvilinear coordinates
 # =============================================================
-N_points = 4  # number of body points (e.g., corners)
+N_points = 1  # number of body points (e.g., corners)
 s_i = sp.symbols(f's_i0:{N_points}', real=True)
 eY_i = sp.symbols(f'eY_i0:{N_points}', real=True)
 K_ref_i = sp.symbols(f'K_ref_i0:{N_points}', real=True)  # reference curvature at each point
@@ -107,9 +107,38 @@ eY_dot_points = []
 
 for k in range(N_points):
     # Time derivative along the spline (curvilinear)
-    s_dot_k = sp.simplify(v * sp.cos(ePsi) / (1 - K_ref_i[k] * eY_i[k]))
-    # Lateral deviation derivative
-    eY_dot_k = sp.simplify(v * sp.sin(ePsi))
+    x_r_body = sp.Function('x_r_body')(s_i[k])
+    y_r_body = sp.Function('y_r_body')(s_i[k])
+    psi_r_body = sp.Function('psi_r_body')(s_i[k])
+
+    X_body_sym = sp.symbols('X_body', real=True)
+    Y_body_sym = sp.symbols('Y_body', real=True)
+    
+    X_body = x_r_body - eY_i[k]*sp.sin(psi_r_body)
+    Y_body = y_r_body + eY_i[k]*sp.cos(psi_r_body)
+
+    dX = X_body - x
+    dY = Y_body - y
+
+    subs_dict = {
+        psi: psi_r_body + ePsi,
+    }
+
+    xdot_body = v*sp.cos(psi + beta) + psidot*(-dY*sp.cos(psi) - dX*sp.sin(psi))
+    ydot_body = v*sp.sin(psi + beta) + psidot*(-dY*sp.sin(psi) + dX*sp.cos(psi))
+
+    xdot_body = xdot_body.subs(subs_dict)
+    ydot_body = ydot_body.subs(subs_dict)
+    
+    xdot_body = sp.trigsimp(sp.simplify(xdot_body))
+    ydot_body = sp.trigsimp(sp.simplify(ydot_body))
+
+    xdot_body = sp.collect(xdot_body, [K, sp.sin(ePsi + psi_r), sp.cos(ePsi + psi_r), sp.sin(ePsi), sp.cos(ePsi)])
+    ydot_body = sp.collect(ydot_body, [K, sp.sin(ePsi + psi_r), sp.cos(ePsi + psi_r), sp.sin(ePsi), sp.cos(ePsi)])
+
+    s_dot_k = sp.trigsimp(sp.simplify(((-sp.cos(psi_r_body)*xdot_body - sp.sin(psi_r_body)*ydot_body) / (-1 + K_ref_i[k]*eY_i[k]))))
+    eY_dot_k = sp.trigsimp(sp.simplify(-sp.sin(psi_r_body)*xdot_body + sp.cos(psi_r_body)*ydot_body))
+    
     s_dot_points.append(s_dot_k)
     eY_dot_points.append(eY_dot_k)
 
@@ -117,16 +146,30 @@ for k in range(N_points):
 s_prime_points = [sp.simplify(s_dot_points[k] / s_dot) for k in range(N_points)]
 eY_prime_points = [sp.simplify(eY_dot_points[k] / s_dot) for k in range(N_points)]
 
+s_prime_points = [sp.collect(s_prime_points[k], [K, sp.sin(ePsi + psi_r), sp.cos(ePsi + psi_r), sp.sin(ePsi), sp.cos(ePsi)]) for k in range(N_points)]
+eY_prime_points = [sp.collect(eY_prime_points[k], [K, sp.sin(ePsi + psi_r), sp.cos(ePsi + psi_r), sp.sin(ePsi), sp.cos(ePsi)]) for k in range(N_points)]
+
+s_prime_points = [sp.trigsimp(sp.simplify(s_prime_points[k])) for k in range(N_points)]
+eY_prime_points = [sp.trigsimp(sp.simplify(eY_prime_points[k])) for k in range(N_points)]
+
 # =============================================================
 # 10. Display body point derivatives
 # =============================================================
 print("\n=== BODY POINTS TIME DERIVATIVES ===")
 for k in range(N_points):
-    print(f"Point {k}: ṡ_i = {s_dot_points[k]}, eẎ_i = {eY_dot_points[k]}")
+    print(f"Point {k}:")
+    print("\tṡ_i = ")
+    sp.pprint(s_dot_points[k])
+    print("\teẎ_i = ")
+    sp.pprint(eY_dot_points[k])
 
 print("\n=== BODY POINTS SPATIAL DERIVATIVES wrt vehicle s ===")
 for k in range(N_points):
-    print(f"Point {k}: s_i' = {s_prime_points[k]}, eY_i' = {eY_prime_points[k]}")
+    print(f"Point {k}:")
+    print("\ts_i' = ")
+    print(s_prime_points[k])
+    print("\teY_i' = ")
+    print(eY_prime_points[k])
 
 # =============================================================
 # 11. Lambdify for numerical evaluation (body points)
