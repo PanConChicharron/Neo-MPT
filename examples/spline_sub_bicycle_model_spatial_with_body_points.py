@@ -32,7 +32,7 @@ class ArraySubscriber(Node):
 
         self.Sf = 100
 
-        self.num_body_points = 4
+        self.num_body_points = 6
 
         self.spline_knots_callback_obj = self.create_subscription(
             SplineDebug,
@@ -56,7 +56,7 @@ class ArraySubscriber(Node):
         )
 
         # four corners
-        self.lf=2.79
+        self.lf=4.89
         self.lr=0.0
         self.w=1.64
         self.front_overhang=1.0
@@ -149,6 +149,7 @@ class ArraySubscriber(Node):
         body_points_array = np.concatenate((x, y))
 
         x0 = np.concatenate((x0, body_points_curvilinear_array))
+        print(x0)
 
         t = time.time()
         simX, simU, Sf, elapsed = self.path_tracking_mpc_spatial_with_body_points.get_optimised_steering(x0, body_points_array, self.spline_knots, self.spline_coeffs_x, self.spline_knots, self.spline_coeffs_y, self.clothoid_spline)
@@ -274,8 +275,10 @@ class ArraySubscriber(Node):
         self.ax[1, 0].plot(s, eY, label='eY')
         self.ax[1, 0].plot(s, eY_body_points_N[:,0], label='eY front left')
         self.ax[1, 0].plot(s, eY_body_points_N[:,1], label='eY front right')
-        self.ax[1, 0].plot(s, eY_body_points_N[:,2], label='eY rear right')
-        self.ax[1, 0].plot(s, eY_body_points_N[:,3], label='eY rear left')
+        self.ax[1, 0].plot(s, eY_body_points_N[:,2], label='eY mid right')
+        self.ax[1, 0].plot(s, eY_body_points_N[:,3], label='eY rear right')
+        self.ax[1, 0].plot(s, eY_body_points_N[:,4], label='eY mid left')
+        self.ax[1, 0].plot(s, eY_body_points_N[:,5], label='eY rear left')
         self.ax[1, 0].plot(s, self.path_tracking_mpc_spatial_with_body_points.model.eY_min * np.ones_like(s), '--', label='eY_min')
         self.ax[1, 0].plot(s, self.path_tracking_mpc_spatial_with_body_points.model.eY_max * np.ones_like(s), '--', label='eY_max')
         self.ax[1, 0].set_xlabel('s [m]')

@@ -106,19 +106,27 @@ s_dot_points = []
 eY_dot_points = []
 
 for k in range(N_points):
-    # offsets of body points in vehicle frame
-    dx_k = sp.symbols(f'dx_{k}', real=True)
-    dy_k = sp.symbols(f'dy_{k}', real=True)
+    x_r_body = [sp.Function(f'x_r_body_{k}')(s_i[k]) for k in range(N_points)]
+    y_r_body = [sp.Function(f'y_r_body_{k}')(s_i[k]) for k in range(N_points)]
+    psi_r_body = [sp.Function(f'psi_r_body_{k}')(s_i[k]) for k in range(N_points)]
 
-    v_x = v * sp.cos(psi + beta) - dy_k * psidot
-    v_y = v * sp.sin(psi + beta) + dx_k * psidot
+    # Offsets relative to body point
+    dX = sp.symbols('dX', real=True)
+    dY = sp.symbols('dY', real=True)
+    # Velocity in global frame
+    xdot_body = v*sp.cos(psi + beta) + psidot*(-dY*sp.cos(psi) - dX*sp.sin(psi))
+    ydot_body = v*sp.sin(psi + beta) + psidot*(-dY*sp.sin(psi) + dX*sp.cos(psi))
 
-    # curvilinear derivatives
-    s_dot_k = (v_x*sp.cos(psi_r) + v_y*sp.sin(psi_r)) / (1 - K_ref_i[k]*eY_i[k])
-    eY_dot_k = -v_x*sp.sin(psi_r) + v_y*sp.cos(psi_r)
+    # Curvilinear projection along the body-point tangent
+    s_dot_i = (xdot_body*sp.cos(psi_r_body[k]) + ydot_body*sp.sin(psi_r_body[k])) / (1 - K_ref_i[k]*eY_i[k])
+    eY_dot_i = -xdot_body*sp.sin(psi_r_body[k]) + ydot_body*sp.cos(psi_r_body[k])
 
-    s_dot_points.append(sp.simplify(s_dot_k))
-    eY_dot_points.append(sp.simplify(eY_dot_k))
+    # Simplify expressions
+    s_dot_i = sp.simplify(s_dot_i)
+    eY_dot_i = sp.simplify(eY_dot_i)
+
+    s_dot_points.append(s_dot_i)
+    eY_dot_points.append(eY_dot_i)
 
 # Spatial derivatives wrt vehicle center s
 s_prime_points = [sp.simplify(s_dot_points[k] / s_dot) for k in range(N_points)]

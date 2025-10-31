@@ -53,7 +53,7 @@ class PathTrackingMPCSpatialWithBodyPoints:
         ocp.solver_options.N_horizon = self.N
 
         # set cost
-        Q = np.diag([1e-2, 1e-2] + [0.] * self.num_body_points + [0.]*self.num_body_points)
+        Q = np.diag([1e-2, 1e-2] + [0.] * self.num_body_points + [1e0]*self.num_body_points)
 
         R = np.eye(nu)
         R[0, 0] = 2e-1

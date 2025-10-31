@@ -91,6 +91,7 @@ def bicycle_model_spatial_with_body_points(n_points, num_body_points, lf, lr, w,
 
         x_centre = x_ref_s + eY * (-sin(psi_ref_s))
         y_centre = y_ref_s + eY * (cos(psi_ref_s))
+        psi = psi_ref_s + eψ
 
         x_body = x_body_points[i]
         y_body = y_body_points[i]
@@ -105,10 +106,10 @@ def bicycle_model_spatial_with_body_points(n_points, num_body_points, lf, lr, w,
         kappa_ref_s_i = substitute(kappa_ref_s, s_sym, s_i)
 
         # dynamics for body point s position
-        ds_i_ds = 1 + 1e-6*(kappa*(dx*sin(psi_ref_s) - dy*cos(psi_ref_s)) + cos(beta + eψ))*(kappa_ref_s*eY - 1)/((kappa_ref_s_i*eY_i - 1)*cos(beta + eψ))
+        ds_i_ds = 1 # -(kappa*(dx*sin(psi_ref_s-psi_ref_body_s_i) - dy*cos(psi_ref_s-psi_ref_body_s_i)) + cos(beta + psi-psi_ref_body_s_i))*(kappa_ref_s*eY - 1)/((kappa_ref_s_i*eY_i - 1)*cos(beta + eψ))
         ds_body_points_ds.append(ds_i_ds)
         # dynamics for body point eY position
-        deY_i_ds = (kappa*(dx*cos(psi_ref_s) + dy*sin(psi_ref_s))*1e-3 + sin(beta + eψ))*(1-kappa_ref_s*eY)/cos(beta + eψ)
+        deY_i_ds = deY_ds # (kappa*(dx*cos(psi_ref_s-psi_ref_body_s_i) + dy*sin(psi_ref_s-psi_ref_body_s_i)) + sin(beta + psi-psi_ref_body_s_i))*(1-kappa_ref_s*eY)/cos(beta + eψ)
         deY_body_points_ds.append(deY_i_ds)
 
     f_expl = vertcat(
@@ -124,7 +125,7 @@ def bicycle_model_spatial_with_body_points(n_points, num_body_points, lf, lr, w,
 
     # input bounds
     model.delta_min = -0.7  # minimum steering angle [rad]
-    model.delta_max = 0.7  # maximum steering angle [rad]
+    model.delta_max =  0.7  # maximum steering angle [rad]
 
     # Define model struct
     params = types.SimpleNamespace()
