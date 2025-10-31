@@ -74,14 +74,55 @@ class ArraySubscriber(Node):
 
     def spline_knots_callback(self, msg):
         t = time.time()
-        self.spline_knots = np.array(msg.knots.data)
-        # Reverse coefficient order to match SciPy's PPoly expectations
-        n_segments = len(self.spline_knots) - 1
-        self.spline_coeffs_x = np.array(msg.x_coeffs.data).reshape(4, n_segments)
-        self.spline_coeffs_y = np.array(msg.y_coeffs.data).reshape(4, n_segments)
-        self.curvatures = np.array(msg.curvatures.data)
+        spline_knots = np.array(msg.knots.data)
+        n_segments = len(spline_knots) - 1
+        coeffs_x = np.array(msg.x_coeffs.data).reshape(4, n_segments)
+        coeffs_y = np.array(msg.y_coeffs.data).reshape(4, n_segments)
+        curvatures = np.array(msg.curvatures.data)
 
-        self.clothoid_spline = ClothoidSpline(self.spline_knots, self.curvatures)
+        target_segments = self.N
+
+        if n_segments < target_segments:
+            # Repeat the last knot value
+            last_knot = spline_knots[-1]
+            extra_knots = np.full(target_segments - n_segments, last_knot)
+            spline_knots = np.concatenate([spline_knots, extra_knots])
+
+            # Linearly extend coefficients: take last segment's end slope
+            last_x_coeff = coeffs_x[:, -1].copy()
+            last_y_coeff = coeffs_y[:, -1].copy()
+
+            # Create "linear" coefficients — zero out curvature terms
+            linear_x_coeff = np.array([0.0, 0.0, last_x_coeff[-2], last_x_coeff[-1]]).reshape(4, 1)
+            linear_y_coeff = np.array([0.0, 0.0, last_y_coeff[-2], last_y_coeff[-1]]).reshape(4, 1)
+
+            n_missing = target_segments - n_segments
+            coeffs_x = np.concatenate([coeffs_x, np.repeat(linear_x_coeff, n_missing, axis=1)], axis=1)
+            coeffs_y = np.concatenate([coeffs_y, np.repeat(linear_y_coeff, n_missing, axis=1)], axis=1)
+
+            # Extend curvature as constant
+            curvatures = np.concatenate([curvatures, np.full(n_missing, curvatures[-1])])
+
+        elif n_segments > target_segments:
+            # Clip to 50 segments
+            spline_knots = spline_knots[:target_segments]
+            coeffs_x = coeffs_x[:, :target_segments-1]
+            coeffs_y = coeffs_y[:, :target_segments-1]
+            curvatures = curvatures[:target_segments-1]
+
+        # Save to object
+        self.spline_knots = spline_knots
+        self.spline_coeffs_x = coeffs_x
+        self.spline_coeffs_y = coeffs_y
+        self.curvatures = curvatures
+        self.body_points_curvilinear = msg.body_points_curvilinear
+        self.body_points = msg.body_points
+
+        # import pdb; pdb.set_trace()
+
+        # self.x_ref_spline = CubicSpline(self.spline_knots[:-1], self.spline_coeffs_x)
+        # self.y_ref_spline = CubicSpline(self.spline_knots[:-1], self.spline_coeffs_y)
+        self.clothoid_spline = ClothoidSpline(self.spline_knots[:-1], self.curvatures)
 
         x0 = np.array([
             0., 

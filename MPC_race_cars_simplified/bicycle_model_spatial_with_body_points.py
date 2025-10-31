@@ -42,12 +42,19 @@ def bicycle_model_spatial_with_body_points(n_points, num_body_points, lf, lr, w,
     x_ref_s = x_ref_s_symbolic_curvature_cubic_spline.get_symbolic_spline()
     y_ref_s_symbolic_curvature_cubic_spline = SymbolicCubicSpline(n_points=n_points, u=s_sym)
     y_ref_s = y_ref_s_symbolic_curvature_cubic_spline.get_symbolic_spline()
-    psi_ref_s_symbolic_curvature_cubic_spline = SymbolicCubicSpline(n_points=n_points, u=s_sym)
-    psi_ref_s = psi_ref_s_symbolic_curvature_cubic_spline.get_symbolic_spline()
     kappa_ref_s_symbolic_curvature_cubic_spline = SymbolicCubicSpline(n_points=n_points, u=s_sym)
     kappa_ref_s = kappa_ref_s_symbolic_curvature_cubic_spline.get_symbolic_spline()
-    
-    p = vertcat(s_sym, x_ref_s_symbolic_curvature_cubic_spline.get_parameters(), y_ref_s_symbolic_curvature_cubic_spline.get_parameters(), psi_ref_s_symbolic_curvature_cubic_spline.get_parameters(), kappa_ref_s_symbolic_curvature_cubic_spline.get_parameters(), x_body_points, y_body_points)
+
+    p = vertcat(s_sym, x_ref_s_symbolic_curvature_cubic_spline.get_parameters(), y_ref_s_symbolic_curvature_cubic_spline.get_parameters(), kappa_ref_s_symbolic_curvature_cubic_spline.get_parameters(), x_body_points, y_body_points)
+
+    # import pdb; pdb.set_trace()
+    print("n_points: ", n_points)
+    print("len s_sym: ", s_sym)
+    print("len x_ref_s: ", x_ref_s_symbolic_curvature_cubic_spline.get_parameters().shape)
+    print("len y_ref_s: ", y_ref_s_symbolic_curvature_cubic_spline.get_parameters().shape)
+    print("len kappa_ref_s: ", kappa_ref_s_symbolic_curvature_cubic_spline.get_parameters().shape)
+    print("len x_body_points: ", x_body_points.shape)
+    print("len y_body_points: ", y_body_points.shape)
 
     # controls
     delta = SX.sym("delta")
@@ -69,6 +76,7 @@ def bicycle_model_spatial_with_body_points(n_points, num_body_points, lf, lr, w,
 
     beta = atan(lr * tan(delta) / (lf + lr))
     kappa = cos(beta) * tan(delta) / (lf + lr)
+    psi_ref_s = atan2(jacobian(y_ref_s, s_sym), jacobian(x_ref_s, s_sym))
 
     # dynamics
     deY_ds = tan(eψ + beta) *(1-kappa_ref_s * eY)

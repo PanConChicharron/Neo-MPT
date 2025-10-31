@@ -28,7 +28,7 @@ class ArraySubscriber(Node):
         self.spline_coeffs_y = None
         self.curvatures = None
 
-        self.N = 100
+        self.N = 50
 
         self.Sf = 100
 
@@ -78,20 +78,55 @@ class ArraySubscriber(Node):
         self.optimised_MPT_trajectory = np.array([point for point in msg.points])
 
     def spline_knots_callback(self, msg):
-        self.spline_knots = np.array(msg.knots.data)
-        # Reverse coefficient order to match SciPy's PPoly expectations
-        n_segments = len(self.spline_knots) - 1
-        self.spline_coeffs_x = np.array(msg.x_coeffs.data).reshape(4, n_segments)
-        self.spline_coeffs_y = np.array(msg.y_coeffs.data).reshape(4, n_segments)
-        self.curvatures = np.array(msg.curvatures.data)
+        spline_knots = np.array(msg.knots.data)
+        n_segments = len(spline_knots) - 1
+        coeffs_x = np.array(msg.x_coeffs.data).reshape(4, n_segments)
+        coeffs_y = np.array(msg.y_coeffs.data).reshape(4, n_segments)
+        curvatures = np.array(msg.curvatures.data)
 
-        import pdb; pdb.set_trace()
-        self.x_ref_spline = CubicSpline(self.spline_knots[:-1], self.spline_coeffs_x)
-        self.y_ref_spline = CubicSpline(self.spline_knots[:-1], self.spline_coeffs_y)
-        self.psi_ref_spline = CubicSpline(self.spline_knots[:-1], self.spline_coeffs_y)
-        self.clothoid_spline = ClothoidSpline(self.spline_knots, self.curvatures)
+        target_segments = self.N
 
-        self.body_points_curvilinear = msg.body_points
+        if n_segments < target_segments:
+            # Repeat the last knot value
+            last_knot = spline_knots[-1]
+            extra_knots = np.full(target_segments - n_segments, last_knot)
+            spline_knots = np.concatenate([spline_knots, extra_knots])
+
+            # Linearly extend coefficients: take last segment's end slope
+            last_x_coeff = coeffs_x[:, -1].copy()
+            last_y_coeff = coeffs_y[:, -1].copy()
+
+            # Create "linear" coefficients — zero out curvature terms
+            linear_x_coeff = np.array([0.0, 0.0, last_x_coeff[-2], last_x_coeff[-1]]).reshape(4, 1)
+            linear_y_coeff = np.array([0.0, 0.0, last_y_coeff[-2], last_y_coeff[-1]]).reshape(4, 1)
+
+            n_missing = target_segments - n_segments
+            coeffs_x = np.concatenate([coeffs_x, np.repeat(linear_x_coeff, n_missing, axis=1)], axis=1)
+            coeffs_y = np.concatenate([coeffs_y, np.repeat(linear_y_coeff, n_missing, axis=1)], axis=1)
+
+            # Extend curvature as constant
+            curvatures = np.concatenate([curvatures, np.full(n_missing, curvatures[-1])])
+
+        elif n_segments > target_segments:
+            # Clip to 50 segments
+            spline_knots = spline_knots[:target_segments]
+            coeffs_x = coeffs_x[:, :target_segments-1]
+            coeffs_y = coeffs_y[:, :target_segments-1]
+            curvatures = curvatures[:target_segments-1]
+
+        # Save to object
+        self.spline_knots = spline_knots
+        self.spline_coeffs_x = coeffs_x
+        self.spline_coeffs_y = coeffs_y
+        self.curvatures = curvatures
+        self.body_points_curvilinear = msg.body_points_curvilinear
+        self.body_points = msg.body_points
+
+        # import pdb; pdb.set_trace()
+
+        # self.x_ref_spline = CubicSpline(self.spline_knots[:-1], self.spline_coeffs_x)
+        # self.y_ref_spline = CubicSpline(self.spline_knots[:-1], self.spline_coeffs_y)
+        self.clothoid_spline = ClothoidSpline(self.spline_knots[:-1], self.curvatures)
 
 
         x0 = np.array([
@@ -110,7 +145,7 @@ class ArraySubscriber(Node):
         x0 = np.concatenate((x0, body_points_curvilinear_array))
 
         t = time.time()
-        simX, simU, Sf, elapsed = self.path_tracking_mpc_spatial_with_body_points.get_optimised_steering(x0, body_points_array, self.x_ref_spline, self.y_ref_spline, self.psi_ref_spline, self.clothoid_spline)
+        simX, simU, Sf, elapsed = self.path_tracking_mpc_spatial_with_body_points.get_optimised_steering(x0, body_points_array, self.spline_knots, self.spline_coeffs_x, self.spline_knots, self.spline_coeffs_y, self.clothoid_spline)
         elapsed_time = time.time() - t
         print(f"Time taken for MPC: {elapsed_time:.4f} seconds")
 
@@ -228,9 +263,9 @@ class ArraySubscriber(Node):
 
         self.ax[1, 0].plot(s, eY, label='eY')
         self.ax[1, 0].plot(s, eY_body_points_N[:,0], label='eY front left')
-        self.ax[1, 0].plot(s, eY_body_points_N[:,1], label='eY front left')
-        self.ax[1, 0].plot(s, eY_body_points_N[:,5], label='eY front left')
-        self.ax[1, 0].plot(s, eY_body_points_N[:,6], label='eY front left')
+        self.ax[1, 0].plot(s, eY_body_points_N[:,1], label='eY front right')
+        self.ax[1, 0].plot(s, eY_body_points_N[:,2], label='eY rear right')
+        self.ax[1, 0].plot(s, eY_body_points_N[:,3], label='eY rear left')
         self.ax[1, 0].plot(s, self.path_tracking_mpc_spatial_with_body_points.model.eY_min * np.ones_like(s), '--', label='eY_min')
         self.ax[1, 0].plot(s, self.path_tracking_mpc_spatial_with_body_points.model.eY_max * np.ones_like(s), '--', label='eY_max')
         self.ax[1, 0].set_xlabel('s [m]')
