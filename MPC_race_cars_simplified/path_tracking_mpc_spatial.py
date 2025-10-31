@@ -55,7 +55,7 @@ class PathTrackingMPCSpatial:
         Q = np.diag([1e-2, 1e-2])
 
         R = np.eye(nu)
-        R[0, 0] = 2e-1
+        R[0, 0] = 5e-1
 
         Qe = 5*Q
 

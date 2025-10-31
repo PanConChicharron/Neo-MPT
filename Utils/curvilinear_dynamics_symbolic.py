@@ -106,41 +106,19 @@ s_dot_points = []
 eY_dot_points = []
 
 for k in range(N_points):
-    # Time derivative along the spline (curvilinear)
-    x_r_body = sp.Function('x_r_body')(s_i[k])
-    y_r_body = sp.Function('y_r_body')(s_i[k])
-    psi_r_body = sp.Function('psi_r_body')(s_i[k])
+    # offsets of body points in vehicle frame
+    dx_k = sp.symbols(f'dx_{k}', real=True)
+    dy_k = sp.symbols(f'dy_{k}', real=True)
 
-    X_body_sym = sp.symbols('X_body', real=True)
-    Y_body_sym = sp.symbols('Y_body', real=True)
-    
-    X_body = x_r_body - eY_i[k]*sp.sin(psi_r_body)
-    Y_body = y_r_body + eY_i[k]*sp.cos(psi_r_body)
+    v_x = v * sp.cos(psi + beta) - dy_k * psidot
+    v_y = v * sp.sin(psi + beta) + dx_k * psidot
 
-    dX = X_body - x
-    dY = Y_body - y
+    # curvilinear derivatives
+    s_dot_k = (v_x*sp.cos(psi_r) + v_y*sp.sin(psi_r)) / (1 - K_ref_i[k]*eY_i[k])
+    eY_dot_k = -v_x*sp.sin(psi_r) + v_y*sp.cos(psi_r)
 
-    subs_dict = {
-        psi: psi_r_body + ePsi,
-    }
-
-    xdot_body = v*sp.cos(psi + beta) + psidot*(-dY*sp.cos(psi) - dX*sp.sin(psi))
-    ydot_body = v*sp.sin(psi + beta) + psidot*(-dY*sp.sin(psi) + dX*sp.cos(psi))
-
-    xdot_body = xdot_body.subs(subs_dict)
-    ydot_body = ydot_body.subs(subs_dict)
-    
-    xdot_body = sp.trigsimp(sp.simplify(xdot_body))
-    ydot_body = sp.trigsimp(sp.simplify(ydot_body))
-
-    xdot_body = sp.collect(xdot_body, [K, sp.sin(ePsi + psi_r), sp.cos(ePsi + psi_r), sp.sin(ePsi), sp.cos(ePsi)])
-    ydot_body = sp.collect(ydot_body, [K, sp.sin(ePsi + psi_r), sp.cos(ePsi + psi_r), sp.sin(ePsi), sp.cos(ePsi)])
-
-    s_dot_k = sp.trigsimp(sp.simplify(((-sp.cos(psi_r_body)*xdot_body - sp.sin(psi_r_body)*ydot_body) / (-1 + K_ref_i[k]*eY_i[k]))))
-    eY_dot_k = sp.trigsimp(sp.simplify(-sp.sin(psi_r_body)*xdot_body + sp.cos(psi_r_body)*ydot_body))
-    
-    s_dot_points.append(s_dot_k)
-    eY_dot_points.append(eY_dot_k)
+    s_dot_points.append(sp.simplify(s_dot_k))
+    eY_dot_points.append(sp.simplify(eY_dot_k))
 
 # Spatial derivatives wrt vehicle center s
 s_prime_points = [sp.simplify(s_dot_points[k] / s_dot) for k in range(N_points)]

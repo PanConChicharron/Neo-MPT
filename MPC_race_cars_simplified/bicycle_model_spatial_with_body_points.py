@@ -89,8 +89,14 @@ def bicycle_model_spatial_with_body_points(n_points, num_body_points, lf, lr, w,
         s_i = s_body_points[i]
         eY_i = eY_body_points[i]
 
+        x_centre = x_ref_s + eY * (-sin(psi_ref_s))
+        y_centre = y_ref_s + eY * (cos(psi_ref_s))
+
         x_body = x_body_points[i]
         y_body = y_body_points[i]
+
+        dx = x_body - x_centre
+        dy = y_body - y_centre
 
         # evaluate curvature spline at body point s position
         x_ref_body_s_i = substitute(x_ref_s, s_sym, s_i)
@@ -99,11 +105,10 @@ def bicycle_model_spatial_with_body_points(n_points, num_body_points, lf, lr, w,
         kappa_ref_s_i = substitute(kappa_ref_s, s_sym, s_i)
 
         # dynamics for body point s position
-        ds_i_ds = -(kappa*(eY_i*cos(eψ + psi_ref_body_s_i) + (x_ref_body_s_i-x_body)*sin(eψ) + (y_ref_body_s_i-y_body)*cos(eψ) - cos(beta + eψ))*(kappa_ref_s*eY - 1)/((kappa_ref_s_i*eY_i - 1)*cos(beta + eψ)))
+        ds_i_ds = 1 + 1e-6*(kappa*(dx*sin(psi_ref_s) - dy*cos(psi_ref_s)) + cos(beta + eψ))*(kappa_ref_s*eY - 1)/((kappa_ref_s_i*eY_i - 1)*cos(beta + eψ))
         ds_body_points_ds.append(ds_i_ds)
-
         # dynamics for body point eY position
-        deY_i_ds = (kappa*(eY*sin(eψ + psi_ref_body_s_i) + x_body*cos(eψ) - y_body*sin(eψ) - x_ref_body_s_i*cos(eψ) + y_ref_body_s_i*sin(eψ)) - sin(beta + eψ))*(kappa_ref_s*eY - 1)/cos(beta + eψ)
+        deY_i_ds = (kappa*(dx*cos(psi_ref_s) + dy*sin(psi_ref_s))*1e-3 + sin(beta + eψ))*(1-kappa_ref_s*eY)/cos(beta + eψ)
         deY_body_points_ds.append(deY_i_ds)
 
     f_expl = vertcat(

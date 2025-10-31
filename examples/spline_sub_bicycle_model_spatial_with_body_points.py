@@ -28,7 +28,7 @@ class ArraySubscriber(Node):
         self.spline_coeffs_y = None
         self.curvatures = None
 
-        self.N = 50
+        self.N = 100
 
         self.Sf = 100
 
@@ -85,11 +85,14 @@ class ArraySubscriber(Node):
         curvatures = np.array(msg.curvatures.data)
 
         target_segments = self.N
+        # import pdb; pdb.set_trace()
 
         if n_segments < target_segments:
+            n_missing = target_segments - n_segments - 1
             # Repeat the last knot value
             last_knot = spline_knots[-1]
-            extra_knots = np.full(target_segments - n_segments, last_knot)
+            ds = self.Sf / self.N
+            extra_knots = last_knot + np.arange(1, n_missing+1) * ds
             spline_knots = np.concatenate([spline_knots, extra_knots])
 
             # Linearly extend coefficients: take last segment's end slope
@@ -100,15 +103,18 @@ class ArraySubscriber(Node):
             linear_x_coeff = np.array([0.0, 0.0, last_x_coeff[-2], last_x_coeff[-1]]).reshape(4, 1)
             linear_y_coeff = np.array([0.0, 0.0, last_y_coeff[-2], last_y_coeff[-1]]).reshape(4, 1)
 
-            n_missing = target_segments - n_segments
             coeffs_x = np.concatenate([coeffs_x, np.repeat(linear_x_coeff, n_missing, axis=1)], axis=1)
             coeffs_y = np.concatenate([coeffs_y, np.repeat(linear_y_coeff, n_missing, axis=1)], axis=1)
+            print(np.shape(spline_knots))
+            print(np.shape(coeffs_x))
+            print(np.shape(coeffs_y))
 
             # Extend curvature as constant
-            curvatures = np.concatenate([curvatures, np.full(n_missing, curvatures[-1])])
+            curvatures = np.concatenate([curvatures, np.repeat(curvatures[-1], n_missing-1, axis=0)])
+            print(np.shape(curvatures))
 
         elif n_segments > target_segments:
-            # Clip to 50 segments
+            # Clip to target segments
             spline_knots = spline_knots[:target_segments]
             coeffs_x = coeffs_x[:, :target_segments-1]
             coeffs_y = coeffs_y[:, :target_segments-1]
@@ -164,6 +170,10 @@ class ArraySubscriber(Node):
         x_samples = np.zeros_like(s_samples)
         y_samples = np.zeros_like(s_samples)
 
+        # print("s_samples: ", s_samples)
+        # print("s_body_points_N: ", s_body_points_N)
+        # print("eY_body_points_N: ", eY_body_points_N)
+
         self.spline_x = PPoly(self.spline_coeffs_x, self.spline_knots)
         self.spline_y = PPoly(self.spline_coeffs_y, self.spline_knots)
 
@@ -202,8 +212,8 @@ class ArraySubscriber(Node):
             self.ax[1, 1].clear()
 
         # Plot trajectory
-        self.ax[0, 0].plot(x[0:50], y[0:50], label='Optimized Trajectory (global)')
-        self.ax[0, 0].plot(x_ref[0:50], y_ref[0:50], '--', label='Reference Spline')
+        self.ax[0, 0].plot(x, y, label='Optimized Trajectory (global)')
+        self.ax[0, 0].plot(x_ref, y_ref, '--', label='Reference Spline')
 
         # For a straight road, you can simply offset by ±road_width/2 in the normal direction:
         left_x = x_ref - self.path_tracking_mpc_spatial_with_body_points.model.eY_max * np.sin(psi_ref)
@@ -211,13 +221,13 @@ class ArraySubscriber(Node):
         right_x = x_ref - self.path_tracking_mpc_spatial_with_body_points.model.eY_min * np.sin(psi_ref)
         right_y = y_ref + self.path_tracking_mpc_spatial_with_body_points.model.eY_min * np.cos(psi_ref)
 
-        self.ax[0, 0].plot(left_x[0:50], left_y[0:50], 'k--', alpha=0.5, label='Left Road Boundary')
-        self.ax[0, 0].plot(right_x[0:50], right_y[0:50], 'k--', alpha=0.5, label='Right Road Boundary')
+        self.ax[0, 0].plot(left_x, left_y, 'k--', alpha=0.5, label='Left Road Boundary')
+        self.ax[0, 0].plot(right_x, right_y, 'k--', alpha=0.5, label='Right Road Boundary')
 
         if self.optimised_MPT_trajectory is None:
             return
 
-        self.ax[0, 0].plot([point.pose.position.x for point in self.optimised_MPT_trajectory[0:50]], [point.pose.position.y for point in self.optimised_MPT_trajectory[0:50]], label='MPT Trajectory')
+        self.ax[0, 0].plot([point.pose.position.x for point in self.optimised_MPT_trajectory], [point.pose.position.y for point in self.optimised_MPT_trajectory], label='MPT Trajectory')
 
         # Plot the four corners
         for s_body_points, eY_body_points in zip(s_body_points_N, eY_body_points_N):
