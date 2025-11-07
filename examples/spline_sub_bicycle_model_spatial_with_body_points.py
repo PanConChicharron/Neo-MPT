@@ -12,11 +12,10 @@ import time
 from scipy.interpolate import PPoly
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from autoware_internal_debug_msgs.msg import SplineDebug
+from autoware_internal_debug_msgs.srv import SplineDebug
 from autoware_planning_msgs.msg import Trajectory
 
 from Utils.clothoid_spline import ClothoidSpline
-from scipy.interpolate import CubicSpline
 from MPC_race_cars_simplified.path_tracking_mpc_spatial_with_body_points import PathTrackingMPCSpatialWithBodyPoints
 
 class ArraySubscriber(Node):
@@ -34,12 +33,7 @@ class ArraySubscriber(Node):
 
         self.num_body_points = 6
 
-        self.spline_knots_callback_obj = self.create_subscription(
-            SplineDebug,
-            '/planning/scenario_planning/lane_driving/motion_planning/path_optimizer/debug/spline_coefficients',
-            self.spline_knots_callback,
-            10
-        )
+        self.optimised_trajectory_service = self.create_service(SplineDebug, '/acados_mpt_solver/get_optimised_trajectory', self.get_optimised_trajectory_callback)
 
         self.optimised_steering_callback_obj = self.create_subscription(
             Float32MultiArray,
@@ -77,23 +71,27 @@ class ArraySubscriber(Node):
     def optimised_MPT_trajectory_callback(self, msg):
         self.optimised_MPT_trajectory = np.array([point for point in msg.points])
 
-    def spline_knots_callback(self, msg):
-        spline_knots = np.array(msg.knots.data)
+    def get_optimised_trajectory_callback(self, req, resp):
+        spline_knots = np.array(req.knots.data)
         n_segments = len(spline_knots) - 1
-        coeffs_x = np.array(msg.x_coeffs.data).reshape(4, n_segments)
-        coeffs_y = np.array(msg.y_coeffs.data).reshape(4, n_segments)
-        curvatures = np.array(msg.curvatures.data)
+        coeffs_x = np.array(req.x_coeffs.data).reshape(4, n_segments)
+        coeffs_y = np.array(req.y_coeffs.data).reshape(4, n_segments)
+        curvatures = np.array(req.curvatures.data)
 
         target_segments = self.N
         # import pdb; pdb.set_trace()
 
         if n_segments < target_segments:
             n_missing = target_segments - n_segments - 1
+            print(f"n_missing: {n_missing}, n_segments: {n_segments}, target_segments: {target_segments}")
             # Repeat the last knot value
             last_knot = spline_knots[-1]
             ds = self.Sf / self.N
             extra_knots = last_knot + np.arange(1, n_missing+1) * ds
+            print(f"extra_knots: {np.shape(extra_knots)}")
+            print(f"spline_knots before: {np.shape(spline_knots)}")
             spline_knots = np.concatenate([spline_knots, extra_knots])
+            print(f"spline_knots after: {np.shape(spline_knots)}")
 
             # Linearly extend coefficients: take last segment's end slope
             last_x_coeff = coeffs_x[:, -1].copy()
@@ -105,13 +103,10 @@ class ArraySubscriber(Node):
 
             coeffs_x = np.concatenate([coeffs_x, np.repeat(linear_x_coeff, n_missing, axis=1)], axis=1)
             coeffs_y = np.concatenate([coeffs_y, np.repeat(linear_y_coeff, n_missing, axis=1)], axis=1)
-            print(np.shape(spline_knots))
-            print(np.shape(coeffs_x))
-            print(np.shape(coeffs_y))
 
             # Extend curvature as constant
-            curvatures = np.concatenate([curvatures, np.repeat(curvatures[-1], n_missing-1, axis=0)])
-            print(np.shape(curvatures))
+            if (n_missing > 0):
+                curvatures = np.concatenate([curvatures, np.repeat(curvatures[-1], n_missing-1, axis=0)])
 
         elif n_segments > target_segments:
             # Clip to target segments
@@ -125,10 +120,13 @@ class ArraySubscriber(Node):
         self.spline_coeffs_x = coeffs_x
         self.spline_coeffs_y = coeffs_y
         self.curvatures = curvatures
-        self.body_points_curvilinear = msg.body_points_curvilinear
-        self.body_points = msg.body_points
+        self.body_points_curvilinear = req.body_points_curvilinear
+        self.body_points = req.body_points
 
         # import pdb; pdb.set_trace()
+
+        print("spline_knots: ", np.shape(self.spline_knots))
+        print("curvatures: ", np.shape(self.curvatures))
 
         # self.x_ref_spline = CubicSpline(self.spline_knots[:-1], self.spline_coeffs_x)
         # self.y_ref_spline = CubicSpline(self.spline_knots[:-1], self.spline_coeffs_y)
@@ -153,6 +151,10 @@ class ArraySubscriber(Node):
 
         t = time.time()
         simX, simU, Sf, elapsed = self.path_tracking_mpc_spatial_with_body_points.get_optimised_steering(x0, body_points_array, self.spline_knots, self.spline_coeffs_x, self.spline_knots, self.spline_coeffs_y, self.clothoid_spline)
+
+        resp.optimised_steering = Float32MultiArray()
+        resp.optimised_steering.data = simU.flatten().tolist()
+
         elapsed_time = time.time() - t
         print(f"Time taken for MPC: {elapsed_time:.4f} seconds")
 
@@ -287,6 +289,8 @@ class ArraySubscriber(Node):
 
         self.fig.canvas.draw_idle()
         self.fig.canvas.flush_events()
+
+        return resp
 
 def main(args=None):
     rclpy.init(args=args)
