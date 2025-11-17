@@ -119,7 +119,9 @@ for k in range(N_points):
 
     # Curvilinear projection along the body-point tangent
     s_dot_i = (xdot_body*sp.cos(psi_r_body[k]) + ydot_body*sp.sin(psi_r_body[k])) / (1 - K_ref_i[k]*eY_i[k])
+    # s_dot_i = -(kappa*(dx*sin(psi_ref_s-psi_ref_body_s_i) - dy*cos(psi_ref_s-psi_ref_body_s_i)) + cos(beta + psi-psi_ref_body_s_i))*(kappa_ref_s*eY - 1)/((kappa_ref_s_i*eY_i - 1)*cos(beta + eψ))
     eY_dot_i = -xdot_body*sp.sin(psi_r_body[k]) + ydot_body*sp.cos(psi_r_body[k])
+    # eY_dot_i = (kappa*(dx*cos(psi_ref_s-psi_ref_body_s_i) + dy*sin(psi_ref_s-psi_ref_body_s_i)) + sin(beta + psi-psi_ref_body_s_i))*(1-kappa_ref_s*eY)/cos(beta + eψ)
 
     # Simplify expressions
     s_dot_i = sp.simplify(s_dot_i)

@@ -15,6 +15,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from autoware_internal_debug_msgs.srv import SplineDebug
 from autoware_planning_msgs.msg import Trajectory
 
+from tf_transformations import quaternion_from_euler
+
 from Utils.clothoid_spline import ClothoidSpline
 from MPC_race_cars_simplified.path_tracking_mpc_spatial_with_body_points import PathTrackingMPCSpatialWithBodyPoints
 
@@ -201,6 +203,16 @@ class ArraySubscriber(Node):
         x = x_ref - eY * np.sin(psi_ref)
         y = y_ref + eY * np.cos(psi_ref)
         psi = psi_ref + eψ
+
+        resp.optimised_trajectory = Trajectory()
+        for i in range(N):
+            point = Trajectory.Point()
+            point.pose.position.x = x[i]
+            point.pose.position.y = y[i]
+
+            point.pose.orientation = quaternion_from_euler(0, 0, psi[i])
+
+            resp.optimised_trajectory.points.append(point)
 
         elapsed_time = time.time() - t
         print(f"Time taken for spline processing: {elapsed_time:.4f} seconds")
