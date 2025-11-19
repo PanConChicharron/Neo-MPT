@@ -1,19 +1,19 @@
-import rclpy
-from rclpy.node import Node
-from std_msgs.msg import Float32MultiArray
 import matplotlib.pyplot as plt
-plt.ion()
 import numpy as np
-
-import sys
 import os
+import sys
 import time
 
 from scipy.interpolate import PPoly
 
+import rclpy
+from geometry_msgs.msg import Quaternion
+from rclpy.node import Node
+from std_msgs.msg import Float32MultiArray
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from autoware_internal_debug_msgs.srv import SplineDebug
-from autoware_planning_msgs.msg import Trajectory
+from autoware_planning_msgs.msg import Trajectory, TrajectoryPoint
 
 from tf_transformations import quaternion_from_euler
 
@@ -84,6 +84,7 @@ class ArraySubscriber(Node):
         # import pdb; pdb.set_trace()
 
         if n_segments < target_segments:
+            print(f"Extending from {n_segments} to {target_segments} segments")
             n_missing = target_segments - n_segments - 1
             print(f"n_missing: {n_missing}, n_segments: {n_segments}, target_segments: {target_segments}")
             # Repeat the last knot value
@@ -108,9 +109,10 @@ class ArraySubscriber(Node):
 
             # Extend curvature as constant
             if (n_missing > 0):
-                curvatures = np.concatenate([curvatures, np.repeat(curvatures[-1], n_missing-1, axis=0)])
+                curvatures = np.concatenate([curvatures, np.repeat(curvatures[-1], n_missing, axis=0)])
 
         elif n_segments > target_segments:
+            print(f"Clipping from {n_segments} to {target_segments} segments")
             # Clip to target segments
             spline_knots = spline_knots[:target_segments]
             coeffs_x = coeffs_x[:, :target_segments-1]
@@ -132,7 +134,7 @@ class ArraySubscriber(Node):
 
         # self.x_ref_spline = CubicSpline(self.spline_knots[:-1], self.spline_coeffs_x)
         # self.y_ref_spline = CubicSpline(self.spline_knots[:-1], self.spline_coeffs_y)
-        self.clothoid_spline = ClothoidSpline(self.spline_knots[:-1], self.curvatures)
+        self.clothoid_spline = ClothoidSpline(self.spline_knots, self.curvatures)
 
 
         x0 = np.array([
@@ -206,11 +208,18 @@ class ArraySubscriber(Node):
 
         resp.optimised_trajectory = Trajectory()
         for i in range(N):
-            point = Trajectory.Point()
+            point = TrajectoryPoint()
             point.pose.position.x = x[i]
             point.pose.position.y = y[i]
 
-            point.pose.orientation = quaternion_from_euler(0, 0, psi[i])
+            qx, qy, qz, qw = quaternion_from_euler(0.0, 0.0, psi[i])
+
+            q = Quaternion()
+            q.x = qx
+            q.y = qy
+            q.z = qz
+            q.w = qw
+            point.pose.orientation = q
 
             resp.optimised_trajectory.points.append(point)
 
@@ -305,6 +314,7 @@ class ArraySubscriber(Node):
         return resp
 
 def main(args=None):
+    plt.ion()
     rclpy.init(args=args)
     node = ArraySubscriber()
     rclpy.spin(node)
