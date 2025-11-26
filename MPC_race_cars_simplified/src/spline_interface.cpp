@@ -64,11 +64,105 @@ private:
 
     void serviceCallback(const std::shared_ptr<SplineDebug::Request> req, std::shared_ptr<SplineDebug::Response> resp)
     {
-        // Parse inputs similar to Python node
+        // Modularized: build parameters and x0, set parameters on solver, then call solver
+        std::vector<double> x0;
+        bool skipSolve = false;
+        std::array<double, NP> parameters = buildParameters(req, x0, skipSolve, resp);
+        if (skipSolve) return;
+
+        {
+            std::string x0_str = "x0: ";
+            for (size_t i = 0; i < x0.size(); ++i) {
+            if (i) x0_str += ", ";
+            x0_str += std::to_string(x0[i]);
+            }
+            RCLCPP_INFO(this->get_logger(), "%s", x0_str.c_str());
+        }
+
+        setParametersToSolver(parameters);
+
+        // warm-start and solve
+        std::array<double, NX> x_init;
+        std::array<double, NU> u_init;
+        // use the built x0 as warm-start if available: x0 vector length may differ; we only copy first NX entries
+        if (!x0.empty()) {
+            for (size_t i = 0; i < std::min((size_t)NX, x0.size()); ++i) x_init[i] = x0[i];
+        }
+
+        u_init[0] = 0.0;
+
+        {
+            std::string x_init_str = "x_init: ";
+            for (size_t i = 0; i < x_init.size(); ++i) {
+            if (i) x_init_str += ", ";
+            x_init_str += std::to_string(x_init[i]);
+            }
+            RCLCPP_INFO(this->get_logger(), "%s", x_init_str.c_str());
+        }
+
+        mpc_.setWarmStart(x_init.data(), u_init.data());
+        auto [status, solver_info] = mpc_.getControl(x_init);
+        RCLCPP_INFO(this->get_logger(), "Acados solve status: %s", status == ACADOS_SUCCESS ? "Success" : "Failure");
+        RCLCPP_INFO(this->get_logger(), "%s", solver_info.c_str());
+
+        RCLCPP_INFO(this->get_logger(), "Retrieving results...");
+        // Retrieve control trajectory and state trajectory (returned by value)
+        auto utraj = mpc_.getControlTrajectory();
+        auto xtraj = mpc_.getStateTrajectory();
+
+        // Fill response: optimised_steering = flattened utraj
+        resp->optimised_steering.data.clear();
+        for (size_t i = 0; i < N; ++i) {
+            for (size_t j = 0; j < NU; ++j) {
+                resp->optimised_steering.data.push_back((float)utraj[i][j]);
+            }
+        }
+
+        // For trajectory, reconstruct simple points from state trajectory: eY and epsi combined with reference
+        size_t simN = N; // number of points
+        resp->optimised_trajectory.points.clear();
+        for (size_t i = 0; i < simN; ++i) {
+            autoware_planning_msgs::msg::TrajectoryPoint pt;
+            double eY = xtraj[i][0];
+            double epsi = xtraj[i][1];
+            // double s_body_point_0 = xtraj[i][2]; // first body point's s value
+            // double s_body_point_1 = xtraj[i][3]; // second body point's s value
+            // double s_body_point_2 = xtraj[i][4]; // third body point's s value
+            // double s_body_point_3 = xtraj[i][5]; // fourth body point's s value
+            // double s_body_point_4 = xtraj[i][6]; // fifth body point's s value
+            // double s_body_point_5 = xtraj[i][7]; // sixth body point's s value
+
+            // RCLCPP_INFO(this->get_logger(), "s_body_point_0[%zu]=%.4f, s_body_point_1=%.4f, s_body_point_2=%.4f, s_body_point_3=%.4f, s_body_point_4=%.4f, s_body_point_5=%.4f",
+            //             i, s_body_point_0, s_body_point_1, s_body_point_2, s_body_point_3, s_body_point_4, s_body_point_5);
+            pt.pose.position.x = eY;
+            pt.pose.position.y = epsi;
+            resp->optimised_trajectory.points.push_back(pt);
+        }
+
+        std::string optimised_steering_str = "";
+        for (size_t i = 0; i < resp->optimised_steering.data.size(); ++i) {
+            optimised_steering_str += std::to_string(resp->optimised_steering.data[i]) + ", ";
+        }
+
+        RCLCPP_INFO(this->get_logger(), "Optimized Steering: %s", optimised_steering_str.c_str());
+
+        // std::string optimised_trajectory_str = "";
+        // for (size_t i = 0; i < resp->optimised_trajectory.points.size(); ++i) {
+        //     optimised_trajectory_str += "(" + std::to_string(resp->optimised_trajectory.points[i].pose.position.x) + ", " +
+        //                                 std::to_string(resp->optimised_trajectory.points[i].pose.position.y) + "), ";
+        // }
+
+        // RCLCPP_INFO(this->get_logger(), "Optimized Trajectory: %s", optimised_trajectory_str.c_str());
+    }
+
+    // Build parameter vector and initial state x0 from the request. If a parameter-size mismatch
+    // is detected, this will set skipSolve=true and populate resp with empty results.
+    std::array<double, NP> buildParameters(const std::shared_ptr<SplineDebug::Request> req, std::vector<double> &x0, bool &skipSolve, std::shared_ptr<SplineDebug::Response> resp)
+    {
+        skipSolve = false;
         // knots
         std::vector<double> knots(req->knots.data.begin(), req->knots.data.end());
         int n_segments = (int)knots.size() - 1;
-
         RCLCPP_ERROR(this->get_logger(), "Received request with %d segments", n_segments);
 
         // x_coeffs and y_coeffs are flattened arrays of length 4 * n_segments
@@ -111,29 +205,8 @@ private:
             curvatures.resize(4*(target_segments-1));
         }
 
-        // Sanity checks based on horizon (target_segments)
-        // We expect number of knots = target_segments + 1
-        size_t expected_knots = (size_t)target_segments;
-        size_t expected_xcoeff = (size_t)4 * (size_t)(target_segments-1); // 4 coefficients per segment, segments == target_segments
-        size_t expected_ycoeff = expected_xcoeff;
-        size_t expected_curv = (size_t)4 * (size_t)(target_segments-1); // one curvature value per segment
-
         RCLCPP_ERROR(this->get_logger(), "sizes: knots=%zu x_coeffs=%zu y_coeffs=%zu curvatures=%zu body_points=%zu", knots.size(), x_coeffs_flat.size(), y_coeffs_flat.size(), curvatures.size(), req->body_points.size());
 
-        // Assert basic shape expectations to help catch packing bugs early
-        if (knots.size() != expected_knots) {
-            RCLCPP_ERROR(this->get_logger(), "unexpected knots length: got=%zu expected=%zu (target_segments=%d)", knots.size(), expected_knots, target_segments);
-            // continue but warn
-        }
-        if (x_coeffs_flat.size() != expected_xcoeff) {
-            RCLCPP_ERROR(this->get_logger(), "unexpected x_coeffs length: got=%zu expected=%zu", x_coeffs_flat.size(), expected_xcoeff);
-        }
-        if (y_coeffs_flat.size() != expected_ycoeff) {
-            RCLCPP_ERROR(this->get_logger(), "unexpected y_coeffs length: got=%zu expected=%zu", y_coeffs_flat.size(), expected_ycoeff);
-        }
-        if (curvatures.size() != expected_curv) {
-            RCLCPP_ERROR(this->get_logger(), "unexpected curvatures length: got=%zu expected=%zu", curvatures.size(), expected_curv);
-        }
         if (req->body_points.size() != req->body_points_curvilinear.size()) {
             RCLCPP_ERROR(this->get_logger(), "body points length mismatch: body_points=%zu body_points_curvilinear=%zu", req->body_points.size(), req->body_points_curvilinear.size());
             assert(req->body_points.size() == req->body_points_curvilinear.size() && "body points mismatch");
@@ -141,125 +214,88 @@ private:
 
         // body points curvilinear -> vector of doubles (s values then eY values)
         std::vector<double> body_points_curvilinear;
-        for (const auto &pt : req->body_points_curvilinear) {
-            body_points_curvilinear.push_back(pt.x);
-        }
-        for (const auto &pt : req->body_points_curvilinear) {
-            body_points_curvilinear.push_back(pt.y);
-        }
+        for (const auto &pt : req->body_points_curvilinear) body_points_curvilinear.push_back(pt.x);
+        for (const auto &pt : req->body_points_curvilinear) body_points_curvilinear.push_back(pt.y);
 
         // body points global
         std::vector<double> body_points_xy;
-        for (const auto &pt : req->body_points) {
-            body_points_xy.push_back(pt.x);
-        }
-        for (const auto &pt : req->body_points) {
-            body_points_xy.push_back(pt.y);
-        }
+        for (const auto &pt : req->body_points) body_points_xy.push_back(pt.x);
+        for (const auto &pt : req->body_points) body_points_xy.push_back(pt.y);
 
-        // Build parameters vector similar to Python: [s_interp, x_ref_sub_knots, x_ref_sub_coeffs_flat, y_ref_sub_knots, y_ref_sub_coeffs_flat, clothoid_sub_knots, clothoid_sub_coeffs_flat, body_points_array]
-        // For now, use full knots and coeffs as provided
-        std::vector<double> parameters;
+        // Build parameters vector similar to Python
+        std::array<double, NP> parameters;
         double s_interp = 0.0;
-        parameters.push_back(s_interp);
+        size_t idx = 0;
 
-        // x ref knots
-        parameters.insert(parameters.end(), knots.begin(), knots.end());
-        // x coeffs
-        parameters.insert(parameters.end(), x_coeffs_flat.begin(), x_coeffs_flat.end());
-        // y ref knots (same as x)
-        parameters.insert(parameters.end(), knots.begin(), knots.end());
-        // y coeffs
-        parameters.insert(parameters.end(), y_coeffs_flat.begin(), y_coeffs_flat.end());
+        // 1. s_interp
+        parameters[idx++] = s_interp;
 
-        // clothoid sub: we don't compute a sub-spline here; append curvatures and knots as-is
-        parameters.insert(parameters.end(), knots.begin(), knots.end());
-        parameters.insert(parameters.end(), curvatures.begin(), curvatures.end());
+        // 2. knots
+        for (double v : knots) {
+            parameters[idx++] = v;
+        }
 
-        // body points
-        parameters.insert(parameters.end(), body_points_xy.begin(), body_points_xy.end());
+        // 3. x_coeffs_flat
+        for (double v : x_coeffs_flat) {
+            parameters[idx++] = v;
+        }
+
+        // 4. knots again
+        for (double v : knots) {
+            parameters[idx++] = v;
+        }
+
+        // 5. y_coeffs_flat
+        for (double v : y_coeffs_flat) {
+            parameters[idx++] = v;
+        }
+
+        // 6. knots again
+        for (double v : knots) {
+            parameters[idx++] = v;
+        }
+
+        // 7. curvatures
+        for (double v : curvatures) {
+            parameters[idx++] = v;
+        }
+
+        // 8. body_points_xy
+        for (double v : body_points_xy) {
+            parameters[idx++] = v;
+        }
 
         // set x0: initial state vector
-        // minimal x0: [0,0,...body points curvilinear]
-        std::vector<double> x0;
+        x0.clear();
         x0.push_back(0.0);
         x0.push_back(0.0);
-        // append body_points_curvilinear
         x0.insert(x0.end(), body_points_curvilinear.begin(), body_points_curvilinear.end());
 
-        // Prepare warm start arrays (zeros)
-        std::vector<double> x_init((N+1)*NX, 0.0);
-        std::vector<double> u_init(N*NU, 0.0);
-        mpc_.setWarmStart(x_init.data(), u_init.data());
-
-        // set parameters for all stages if NP>0
+        // sanity-check NP
         if (CURVILINEAR_BICYCLE_MODEL_SPATIAL_NP > 0) {
             size_t actual_np = parameters.size();
-            // compute expected from component sizes using the packing used above
-            size_t k = knots.size();
-            size_t xc = x_coeffs_flat.size();
-            size_t yc = y_coeffs_flat.size();
-            size_t cv = curvatures.size();
-            size_t bp = body_points_xy.size();
-            size_t computed_expected = 1 + k + xc + k + yc + k + cv + bp;
             size_t expected_np = (size_t)CURVILINEAR_BICYCLE_MODEL_SPATIAL_NP;
-
             if (actual_np != expected_np) {
-                // Log a small sample to aid debugging and skip calling the solver to avoid crashes
                 size_t sample = std::min((size_t)10, actual_np);
                 std::string s_first = "";
-                for (size_t i = 0; i < sample; ++i) {
-                    s_first += std::to_string(parameters[i]) + ", ";
-                }
+                for (size_t i = 0; i < sample; ++i) s_first += std::to_string(parameters[i]) + ", ";
                 std::string s_last = "";
-                for (size_t i = (actual_np > sample ? actual_np - sample : 0); i < actual_np; ++i) {
-                    s_last += std::to_string(parameters[i]) + ", ";
-                }
+                for (size_t i = (actual_np > sample ? actual_np - sample : 0); i < actual_np; ++i) s_last += std::to_string(parameters[i]) + ", ";
                 RCLCPP_ERROR(this->get_logger(), "parameter length mismatch: actual=%zu expected=%zu; first=%s last=%s", actual_np, expected_np, s_first.c_str(), s_last.c_str());
                 resp->optimised_steering.data.clear();
                 resp->optimised_trajectory.points.clear();
                 RCLCPP_ERROR(this->get_logger(), "Skipping solve due to parameter-size mismatch");
-                return;
-            }
-            mpc_.setParametersAllStages(parameters.data(), (int)parameters.size());
-        }
-
-        int status = mpc_.solve();
-        RCLCPP_INFO(this->get_logger(), "Acados solve status: %d", status);
-
-        RCLCPP_INFO(this->get_logger(), "Retrieving results...");
-        // Retrieve control trajectory and state trajectory (returned by value)
-        auto utraj = mpc_.getControlTrajectory();
-        auto xtraj = mpc_.getStateTrajectory();
-
-        // Fill response: optimised_steering = flattened utraj
-        resp->optimised_steering.data.clear();
-        for (size_t i = 0; i < N; ++i) {
-            for (size_t j = 0; j < NU; ++j) {
-                resp->optimised_steering.data.push_back((float)utraj[i][j]);
+                skipSolve = true;
             }
         }
 
-        // For trajectory, reconstruct simple points from state trajectory: eY and epsi combined with reference
-        // We don't evaluate splines here; provide a minimal trajectory using xtraj states: assume xtraj has columns [eY, epsi, ...]
-        size_t simN = N; // number of points
-        resp->optimised_trajectory.points.clear();
-        for (size_t i = 0; i < simN; ++i) {
-            autoware_planning_msgs::msg::TrajectoryPoint pt;
-            // Set position.x = eY (placeholder) and y = epsi to keep types consistent
-            double eY = xtraj[i][0];
-            double epsi = xtraj[i][1];
-            pt.pose.position.x = eY;
-            pt.pose.position.y = epsi;
-            resp->optimised_trajectory.points.push_back(pt);
-        }
+        return parameters;
+    }
 
-        std::string optimised_steering_str = "";
-        for (size_t i = 0; i < resp->optimised_steering.data.size(); ++i) {
-            optimised_steering_str += std::to_string(resp->optimised_steering.data[i]) + ", ";
-        }  
-
-        RCLCPP_INFO(this->get_logger(), "Optimized Steering: %s", optimised_steering_str.c_str());
+    // Set parameters on the AcadosInterface for all stages. Returns false and populates resp on failure.
+    void setParametersToSolver(const std::array<double, NP> &parameters)
+    {
+        mpc_.setParametersAllStages(parameters);
     }
 
     rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr steering_sub_;

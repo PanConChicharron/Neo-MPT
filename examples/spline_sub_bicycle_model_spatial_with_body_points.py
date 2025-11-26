@@ -156,13 +156,15 @@ class ArraySubscriber(Node):
         body_points_array = np.concatenate((x, y))
 
         x0 = np.concatenate((x0, body_points_curvilinear_array))
-        print(x0)
+        # print(x0)
 
         t = time.time()
         simX, simU, Sf, elapsed = self.path_tracking_mpc_spatial_with_body_points.get_optimised_steering(x0, body_points_array, self.spline_knots, self.spline_coeffs_x, self.spline_knots, self.spline_coeffs_y, self.clothoid_spline)
 
         resp.optimised_steering = Float32MultiArray()
         resp.optimised_steering.data = simU.flatten().tolist()
+
+        # print(f"Optimized steering: {resp.optimised_steering.data}")
 
         elapsed_time = time.time() - t
         print(f"Time taken for MPC: {elapsed_time:.4f} seconds")
@@ -174,6 +176,9 @@ class ArraySubscriber(Node):
 
         s_body_points_N = simX[:, 2 : 2 + self.num_body_points]
         eY_body_points_N = simX[:, 2 + self.num_body_points : ]
+
+        print("s_body_points_N: ", s_body_points_N)
+        print("eY_body_points_N: ", eY_body_points_N)
 
         # Rasterize the spline and plot the x, y spline and the optimized states (eY, eψ)
 
@@ -311,7 +316,6 @@ class ArraySubscriber(Node):
         self.ax[1, 0].plot(s, self.path_tracking_mpc_spatial_with_body_points.model.eY_max * np.ones_like(s), '--', label='eY_max')
         self.ax[1, 0].set_xlabel('s [m]')
         self.ax[1, 0].legend()
-
 
         self.fig.canvas.draw_idle()
         self.fig.canvas.flush_events()

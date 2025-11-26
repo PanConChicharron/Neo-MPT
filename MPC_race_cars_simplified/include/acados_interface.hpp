@@ -2,6 +2,7 @@
 
 #include <array>
 #include <stddef.h>
+#include <string>
 extern "C" {
 #include "c_generated_code/acados_solver_curvilinear_bicycle_model_spatial.h"
 }
@@ -17,17 +18,19 @@ public:
     ~AcadosInterface();
 
     int solve();
-    int getControl(std::array<double, NX> x0) const;
+    std::pair<int, std::string> getControl(std::array<double, NX> x0);
     // Retrieve full horizon of states (length (N+1)*NX)
     std::array<std::array<double, NX>, N+1> getStateTrajectory() const;
     // Retrieve full horizon of controls (length N*NU)
     std::array<std::array<double, NU>, N> getControlTrajectory() const;
     // Set parameters for a single stage
-    void setParameters(int stage, const double* params, int np);
+    void setParameters(int stage, std::array<double, NP> params);
     // Set the same parameters for all stages
-    void setParametersAllStages(const double* params, int np);
+    void setParametersAllStages(std::array<double, NP> params);
     // Warm start: set initial guesses for all states and controls
     void setWarmStart(const double* x_init, const double* u_init);
+    // Set the initial state constraint (lbx/ubx) at stage 0
+    void setInitialState(double* x0);
 
 private:
     curvilinear_bicycle_model_spatial_solver_capsule* capsule_;
