@@ -1,10 +1,28 @@
 #include "acados_interface.hpp"
+
+#include <algorithm>
 #include <cstring>
+#include <iostream>
+
+#include "c_generated_code/acados_solver_curvilinear_bicycle_model_spatial.h"
 
 AcadosInterface::AcadosInterface()
 {
     capsule_ = curvilinear_bicycle_model_spatial_acados_create_capsule();
     curvilinear_bicycle_model_spatial_acados_create(capsule_);
+
+    // Example: set initial state to zero
+    double lbx0[CURVILINEAR_BICYCLE_MODEL_SPATIAL_NX] = {0};
+    double ubx0[CURVILINEAR_BICYCLE_MODEL_SPATIAL_NX] = {0};
+
+    nlp_config_ = curvilinear_bicycle_model_spatial_acados_get_nlp_config(capsule_);
+    nlp_dims_ = curvilinear_bicycle_model_spatial_acados_get_nlp_dims(capsule_);
+    nlp_in_ = curvilinear_bicycle_model_spatial_acados_get_nlp_in(capsule_);
+    nlp_out_ = curvilinear_bicycle_model_spatial_acados_get_nlp_out(capsule_);
+    nlp_solver_ = curvilinear_bicycle_model_spatial_acados_get_nlp_solver(capsule_);
+
+    ocp_nlp_constraints_model_set(nlp_config_, nlp_dims_, nlp_in_, nlp_out_, 0, "lbx", lbx0);
+    ocp_nlp_constraints_model_set(nlp_config_, nlp_dims_, nlp_in_, nlp_out_, 0, "ubx", ubx0);
 }
 
 AcadosInterface::~AcadosInterface()
@@ -13,85 +31,69 @@ AcadosInterface::~AcadosInterface()
     curvilinear_bicycle_model_spatial_acados_free_capsule(capsule_);
 }
 
-void AcadosInterface::initialize()
-{
-    // Example: set initial state to zero
-    double x0[CURVILINEAR_BICYCLE_MODEL_SPATIAL_NX] = {0};
-
-    ocp_nlp_in *nlp_in = curvilinear_bicycle_model_spatial_acados_get_nlp_in(capsule_);
-
-    // Set initial state for all shooting nodes
-    // use ocp_nlp_out_set to set initial guess for states (and controls below)
-    ocp_nlp_config *nlp_config = curvilinear_bicycle_model_spatial_acados_get_nlp_config(capsule_);
-    ocp_nlp_dims *nlp_dims = curvilinear_bicycle_model_spatial_acados_get_nlp_dims(capsule_);
-    ocp_nlp_out *nlp_out = curvilinear_bicycle_model_spatial_acados_get_nlp_out(capsule_);
-
-    // initialize states and controls to zero
-    double u0[CURVILINEAR_BICYCLE_MODEL_SPATIAL_NU] = {0};
-    for (int i = 0; i < nlp_dims->N; ++i)
-    {
-        ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, i, "x", x0);
-        ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, i, "u", u0);
-    }
-    // final stage x
-    ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, nlp_dims->N, "x", x0);
-}
-
 int AcadosInterface::solve()
 {
-    return curvilinear_bicycle_model_spatial_acados_solve(capsule_);
+    int status = curvilinear_bicycle_model_spatial_acados_solve(capsule_);
+    return status;
 }
 
-void AcadosInterface::setState(const double *x)
+int AcadosInterface::getControl(std::array<double, NX> x0) const
 {
-    // set current state as initial guess for all stages (or at least stage 0)
-    ocp_nlp_config *nlp_config = curvilinear_bicycle_model_spatial_acados_get_nlp_config(capsule_);
-    ocp_nlp_dims *nlp_dims = curvilinear_bicycle_model_spatial_acados_get_nlp_dims(capsule_);
-    ocp_nlp_in *nlp_in = curvilinear_bicycle_model_spatial_acados_get_nlp_in(capsule_);
-    ocp_nlp_out *nlp_out = curvilinear_bicycle_model_spatial_acados_get_nlp_out(capsule_);
+    // initial value for control input
+    double u0[NU];
+    u0[0] = 0.0;
 
-    // set as initial guess for stage 0
-    ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, 0, "x", const_cast<double*>(x));
-}
+    // prepare evaluation
+    int NTIMINGS = 1;
+    double min_time = 1e12;
+    double kkt_norm_inf;
+    double elapsed_time;
+    int sqp_iter;
 
-void AcadosInterface::getControl(double *u) const
-{
-    // retrieve control for first stage using ocp_nlp_out_get
-    // const_cast used because the generated getters take non-const capsule pointer
-    auto cap = const_cast<curvilinear_bicycle_model_spatial_solver_capsule*>(capsule_);
-    ocp_nlp_config *nlp_config = curvilinear_bicycle_model_spatial_acados_get_nlp_config(cap);
-    ocp_nlp_dims *nlp_dims = curvilinear_bicycle_model_spatial_acados_get_nlp_dims(cap);
-    ocp_nlp_out *nlp_out = curvilinear_bicycle_model_spatial_acados_get_nlp_out(cap);
+    double xtraj[NX * (N+1)];
+    double utraj[NU * N];
 
-    ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, 0, "u", u);
-}
-
-void AcadosInterface::getStateTrajectory(double* xtraj) const
-{
-    auto cap = const_cast<curvilinear_bicycle_model_spatial_solver_capsule*>(capsule_);
-    ocp_nlp_config *nlp_config = curvilinear_bicycle_model_spatial_acados_get_nlp_config(cap);
-    ocp_nlp_dims *nlp_dims = curvilinear_bicycle_model_spatial_acados_get_nlp_dims(cap);
-    ocp_nlp_out *nlp_out = curvilinear_bicycle_model_spatial_acados_get_nlp_out(cap);
-
-    int NX = CURVILINEAR_BICYCLE_MODEL_SPATIAL_NX;
-    for (int i = 0; i <= nlp_dims->N; ++i)
+    // initialize solution
+    for (int i = 0; i < N; i++)
     {
-        ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, i, "x", &xtraj[i * NX]);
+        ocp_nlp_out_set(nlp_config_, nlp_dims_, nlp_out_, nlp_in_, i, "x", x0.data());
+        ocp_nlp_out_set(nlp_config_, nlp_dims_, nlp_out_, nlp_in_, i, "u", u0);
     }
+    ocp_nlp_out_set(nlp_config_, nlp_dims_, nlp_out_, nlp_in_, N, "x", x0.data());
+    int status = curvilinear_bicycle_model_spatial_acados_solve(capsule_);
+    ocp_nlp_get(nlp_solver_, "time_tot", &elapsed_time);
+    min_time = std::min(elapsed_time, min_time);
+
+    ocp_nlp_out_get(nlp_config_, nlp_dims_, nlp_out_, 0, "kkt_norm_inf", &kkt_norm_inf);
+    ocp_nlp_get(nlp_solver_, "sqp_iter", &sqp_iter);
+    
+    curvilinear_bicycle_model_spatial_acados_print_stats(capsule_);
+    
+    std::cerr << "\nSolver info:" << std::endl;
+    std::cerr << " SQP iterations " << sqp_iter << "\n minimum time for " << 1 << " solve " << min_time*1000 << " [ms]\n KKT " << kkt_norm_inf << std::endl;
+
+    return status;
 }
 
-void AcadosInterface::getControlTrajectory(double* utraj) const
+std::array<std::array<double, NX>, N+1> AcadosInterface::getStateTrajectory() const
 {
-    auto cap = const_cast<curvilinear_bicycle_model_spatial_solver_capsule*>(capsule_);
-    ocp_nlp_config *nlp_config = curvilinear_bicycle_model_spatial_acados_get_nlp_config(cap);
-    ocp_nlp_dims *nlp_dims = curvilinear_bicycle_model_spatial_acados_get_nlp_dims(cap);
-    ocp_nlp_out *nlp_out = curvilinear_bicycle_model_spatial_acados_get_nlp_out(cap);
-
-    int NU = CURVILINEAR_BICYCLE_MODEL_SPATIAL_NU;
-    for (int i = 0; i < nlp_dims->N; ++i)
+    std::array<std::array<double, NX>, N+1> xtraj;
+    for (int ii = 0; ii <= nlp_dims_->N; ii++)
     {
-        ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, i, "u", &utraj[i * NU]);
+        ocp_nlp_out_get(nlp_config_, nlp_dims_, nlp_out_, ii, "x", &xtraj[ii]);
     }
+    
+    return xtraj;
+}
+
+std::array<std::array<double, NU>, N> AcadosInterface::getControlTrajectory() const
+{
+    std::array<std::array<double, NU>, N> utraj;
+    for (int ii = 0; ii < N; ii++)
+    {   
+        ocp_nlp_out_get(nlp_config_, nlp_dims_, nlp_out_, ii, "u", &utraj[ii]);
+    }
+    return utraj;
 }
 
 void AcadosInterface::setParameters(int stage, const double *params, int np)
@@ -101,7 +103,8 @@ void AcadosInterface::setParameters(int stage, const double *params, int np)
 
 void AcadosInterface::setParametersAllStages(const double *params, int np)
 {
-    for (int i = 0; i < CURVILINEAR_BICYCLE_MODEL_SPATIAL_N + 1; ++i)
+    ocp_nlp_dims *nlp_dims = curvilinear_bicycle_model_spatial_acados_get_nlp_dims(capsule_);
+    for (int i = 0; i <= nlp_dims->N; ++i)
     {
         curvilinear_bicycle_model_spatial_acados_update_params(capsule_, i, const_cast<double *>(params), np);
     }
@@ -109,17 +112,17 @@ void AcadosInterface::setParametersAllStages(const double *params, int np)
 
 void AcadosInterface::setWarmStart(const double *x_init, const double *u_init)
 {
-    ocp_nlp_config *nlp_config = curvilinear_bicycle_model_spatial_acados_get_nlp_config(capsule_);
-    ocp_nlp_dims *nlp_dims = curvilinear_bicycle_model_spatial_acados_get_nlp_dims(capsule_);
-    ocp_nlp_out *nlp_out = curvilinear_bicycle_model_spatial_acados_get_nlp_out(capsule_);
-    ocp_nlp_in *nlp_in = curvilinear_bicycle_model_spatial_acados_get_nlp_in(capsule_);
+    nlp_config_ = curvilinear_bicycle_model_spatial_acados_get_nlp_config(capsule_);
+    nlp_dims_ = curvilinear_bicycle_model_spatial_acados_get_nlp_dims(capsule_);
+    nlp_out_ = curvilinear_bicycle_model_spatial_acados_get_nlp_out(capsule_);
+    nlp_in_ = curvilinear_bicycle_model_spatial_acados_get_nlp_in(capsule_);
 
     // x_init is expected to have length (N+1)*NX, u_init length N*NU
-    for (int i = 0; i < nlp_dims->N; ++i)
+    for (int i = 0; i < nlp_dims_->N; ++i)
     {
-        ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, i, "x", const_cast<double*>(&x_init[i * CURVILINEAR_BICYCLE_MODEL_SPATIAL_NX]));
-        ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, i, "u", const_cast<double*>(&u_init[i * CURVILINEAR_BICYCLE_MODEL_SPATIAL_NU]));
+        ocp_nlp_out_set(nlp_config_, nlp_dims_, nlp_out_, nlp_in_, i, "x", const_cast<double*>(&x_init[i * CURVILINEAR_BICYCLE_MODEL_SPATIAL_NX]));
+        ocp_nlp_out_set(nlp_config_, nlp_dims_, nlp_out_, nlp_in_, i, "u", const_cast<double*>(&u_init[i * CURVILINEAR_BICYCLE_MODEL_SPATIAL_NU]));
     }
     // final stage x
-    ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, nlp_dims->N, "x", const_cast<double*>(&x_init[nlp_dims->N * CURVILINEAR_BICYCLE_MODEL_SPATIAL_NX]));
+    ocp_nlp_out_set(nlp_config_, nlp_dims_, nlp_out_, nlp_in_, nlp_dims_->N, "x", const_cast<double*>(&x_init[nlp_dims_->N * CURVILINEAR_BICYCLE_MODEL_SPATIAL_NX]));
 }

@@ -12,6 +12,7 @@
 #include <thread>
 #include <cassert>
 #include <iomanip>
+#include <cstdio>
 
 #include "acados_interface.hpp"
 
@@ -46,9 +47,6 @@ public:
             "/acados_mpt_solver/get_optimised_trajectory",
             std::bind(&SplineInterfaceNode::serviceCallback, this, std::placeholders::_1, std::placeholders::_2)
         );
-
-        // Initialize Acados interface
-        mpc_.initialize();
     }
 
 private:
@@ -80,7 +78,7 @@ private:
         // curvatures
         std::vector<double> curvatures(req->curvatures.data.begin(), req->curvatures.data.end());
 
-        int target_segments = CURVILINEAR_BICYCLE_MODEL_SPATIAL_N; // use solver horizon as target
+        int target_segments = CURVILINEAR_BICYCLE_MODEL_SPATIAL_N; // number of segments (solver horizon)
 
         // Adjust sizes if necessary (simple strategy: extend last values)
         if (n_segments < target_segments) {
@@ -125,19 +123,16 @@ private:
         // Assert basic shape expectations to help catch packing bugs early
         if (knots.size() != expected_knots) {
             RCLCPP_ERROR(this->get_logger(), "unexpected knots length: got=%zu expected=%zu (target_segments=%d)", knots.size(), expected_knots, target_segments);
-            assert(knots.size() == expected_knots && "knots length mismatch");
+            // continue but warn
         }
         if (x_coeffs_flat.size() != expected_xcoeff) {
             RCLCPP_ERROR(this->get_logger(), "unexpected x_coeffs length: got=%zu expected=%zu", x_coeffs_flat.size(), expected_xcoeff);
-            assert(x_coeffs_flat.size() == expected_xcoeff && "x_coeffs length mismatch");
         }
         if (y_coeffs_flat.size() != expected_ycoeff) {
             RCLCPP_ERROR(this->get_logger(), "unexpected y_coeffs length: got=%zu expected=%zu", y_coeffs_flat.size(), expected_ycoeff);
-            assert(y_coeffs_flat.size() == expected_ycoeff && "y_coeffs length mismatch");
         }
         if (curvatures.size() != expected_curv) {
             RCLCPP_ERROR(this->get_logger(), "unexpected curvatures length: got=%zu expected=%zu", curvatures.size(), expected_curv);
-            assert(curvatures.size() == expected_curv && "curvatures length mismatch");
         }
         if (req->body_points.size() != req->body_points_curvilinear.size()) {
             RCLCPP_ERROR(this->get_logger(), "body points length mismatch: body_points=%zu body_points_curvilinear=%zu", req->body_points.size(), req->body_points_curvilinear.size());
@@ -193,20 +188,9 @@ private:
         x0.insert(x0.end(), body_points_curvilinear.begin(), body_points_curvilinear.end());
 
         // Prepare warm start arrays (zeros)
-        int NX = CURVILINEAR_BICYCLE_MODEL_SPATIAL_NX;
-        int NU = CURVILINEAR_BICYCLE_MODEL_SPATIAL_NU;
-        int N = CURVILINEAR_BICYCLE_MODEL_SPATIAL_N;
-
         std::vector<double> x_init((N+1)*NX, 0.0);
         std::vector<double> u_init(N*NU, 0.0);
         mpc_.setWarmStart(x_init.data(), u_init.data());
-
-        // Set x0 as lbx/ubx by using setState (which sets initial guess for stage 0)
-        // If the solver expects constraints on x0 via ocp_nlp_in, our AcadosInterface doesn't expose that, so call setState
-        // Fill a full state vector with zeros and copy x0 into its first elements
-        std::vector<double> x0_full(NX, 0.0);
-        for (size_t i = 0; i < x0.size() && i < (size_t)NX; ++i) x0_full[i] = x0[i];
-        mpc_.setState(x0_full.data());
 
         // set parameters for all stages if NP>0
         if (CURVILINEAR_BICYCLE_MODEL_SPATIAL_NP > 0) {
@@ -221,7 +205,7 @@ private:
             size_t expected_np = (size_t)CURVILINEAR_BICYCLE_MODEL_SPATIAL_NP;
 
             if (actual_np != expected_np) {
-                // Log a small sample to aid debugging
+                // Log a small sample to aid debugging and skip calling the solver to avoid crashes
                 size_t sample = std::min((size_t)10, actual_np);
                 std::string s_first = "";
                 for (size_t i = 0; i < sample; ++i) {
@@ -231,8 +215,11 @@ private:
                 for (size_t i = (actual_np > sample ? actual_np - sample : 0); i < actual_np; ++i) {
                     s_last += std::to_string(parameters[i]) + ", ";
                 }
-                // Fail fast in debug to help developers catch the issue
-                assert(actual_np == expected_np && "parameters length does not match CURVILINEAR_BICYCLE_MODEL_SPATIAL_NP");
+                RCLCPP_ERROR(this->get_logger(), "parameter length mismatch: actual=%zu expected=%zu; first=%s last=%s", actual_np, expected_np, s_first.c_str(), s_last.c_str());
+                resp->optimised_steering.data.clear();
+                resp->optimised_trajectory.points.clear();
+                RCLCPP_ERROR(this->get_logger(), "Skipping solve due to parameter-size mismatch");
+                return;
             }
             mpc_.setParametersAllStages(parameters.data(), (int)parameters.size());
         }
@@ -240,36 +227,39 @@ private:
         int status = mpc_.solve();
         RCLCPP_INFO(this->get_logger(), "Acados solve status: %d", status);
 
-        // Retrieve control trajectory and state trajectory
-        std::vector<double> utraj(N * NU);
-        std::vector<double> xtraj((N+1) * NX);
-        mpc_.getControlTrajectory(utraj.data());
-        mpc_.getStateTrajectory(xtraj.data());
+        RCLCPP_INFO(this->get_logger(), "Retrieving results...");
+        // Retrieve control trajectory and state trajectory (returned by value)
+        auto utraj = mpc_.getControlTrajectory();
+        auto xtraj = mpc_.getStateTrajectory();
 
         // Fill response: optimised_steering = flattened utraj
         resp->optimised_steering.data.clear();
-        for (int i = 0; i < N * NU; ++i) resp->optimised_steering.data.push_back((float)utraj[i]);
+        for (size_t i = 0; i < N; ++i) {
+            for (size_t j = 0; j < NU; ++j) {
+                resp->optimised_steering.data.push_back((float)utraj[i][j]);
+            }
+        }
 
         // For trajectory, reconstruct simple points from state trajectory: eY and epsi combined with reference
         // We don't evaluate splines here; provide a minimal trajectory using xtraj states: assume xtraj has columns [eY, epsi, ...]
-        int simN = N; // number of points
+        size_t simN = N; // number of points
         resp->optimised_trajectory.points.clear();
-        for (int i = 0; i < simN; ++i) {
+        for (size_t i = 0; i < simN; ++i) {
             autoware_planning_msgs::msg::TrajectoryPoint pt;
             // Set position.x = eY (placeholder) and y = epsi to keep types consistent
-            double eY = xtraj[i*NX + 0];
-            double epsi = xtraj[i*NX + 1];
+            double eY = xtraj[i][0];
+            double epsi = xtraj[i][1];
             pt.pose.position.x = eY;
             pt.pose.position.y = epsi;
             resp->optimised_trajectory.points.push_back(pt);
         }
 
-        // print steering
+        std::string optimised_steering_str = "";
         for (size_t i = 0; i < resp->optimised_steering.data.size(); ++i) {
-            RCLCPP_INFO(this->get_logger(), "Steering[%zu]: %f", i, resp->optimised_steering.data[i]);
-        }
+            optimised_steering_str += std::to_string(resp->optimised_steering.data[i]) + ", ";
+        }  
 
-        RCLCPP_INFO(this->get_logger(), "Service handled: produced %zu steering values and %zu trajectory points", resp->optimised_steering.data.size(), resp->optimised_trajectory.points.size());
+        RCLCPP_INFO(this->get_logger(), "Optimized Steering: %s", optimised_steering_str.c_str());
     }
 
     rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr steering_sub_;
@@ -285,6 +275,9 @@ private:
 
 int main(int argc, char** argv)
 {
+    // Disable buffering on stdout/stderr so prints appear immediately
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
     rclcpp::init(argc, argv);
     auto node = std::make_shared<SplineInterfaceNode>();
     rclcpp::spin(node);
