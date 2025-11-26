@@ -80,6 +80,11 @@ class ArraySubscriber(Node):
         coeffs_y = np.array(req.y_coeffs.data).reshape(4, n_segments)
         curvatures = np.array(req.curvatures.data)
 
+        print("spline_knots.shape: " , spline_knots.shape)
+        print("coeffs_x.shape: " , coeffs_x.shape)
+        print("coeffs_y.shape: " , coeffs_y.shape)
+        print("curvatures.shape: " , curvatures.shape)
+
         target_segments = self.N
         # import pdb; pdb.set_trace()
 
