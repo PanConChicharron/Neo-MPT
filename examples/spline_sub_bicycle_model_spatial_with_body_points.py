@@ -117,7 +117,7 @@ class ArraySubscriber(Node):
             spline_knots = spline_knots[:target_segments]
             coeffs_x = coeffs_x[:, :target_segments-1]
             coeffs_y = coeffs_y[:, :target_segments-1]
-            curvatures = curvatures[:target_segments-1]
+            curvatures = curvatures[:target_segments]
 
         # Save to object
         self.spline_knots = spline_knots

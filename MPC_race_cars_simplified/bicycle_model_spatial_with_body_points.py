@@ -45,6 +45,13 @@ def bicycle_model_spatial_with_body_points(n_points, num_body_points, lf, lr, w,
     kappa_ref_s_symbolic_curvature_cubic_spline = SymbolicCubicSpline(n_points=n_points, u=s_sym)
     kappa_ref_s = kappa_ref_s_symbolic_curvature_cubic_spline.get_symbolic_spline()
 
+    print("sym shape: ", s_sym.shape)
+    print("x_ref_s shape: ", x_ref_s_symbolic_curvature_cubic_spline.get_parameters().shape)
+    print("y_ref_s shape: ", y_ref_s_symbolic_curvature_cubic_spline.get_parameters().shape)
+    print("kappa_ref_s shape: ", kappa_ref_s_symbolic_curvature_cubic_spline.get_parameters().shape)
+    print("x_body_points shape: ", x_body_points.shape)
+    print("y_body_points shape: ", y_body_points.shape)
+
     p = vertcat(s_sym, x_ref_s_symbolic_curvature_cubic_spline.get_parameters(), y_ref_s_symbolic_curvature_cubic_spline.get_parameters(), kappa_ref_s_symbolic_curvature_cubic_spline.get_parameters(), x_body_points, y_body_points)
 
     # import pdb; pdb.set_trace()
