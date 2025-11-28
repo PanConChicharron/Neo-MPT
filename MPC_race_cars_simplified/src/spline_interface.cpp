@@ -66,9 +66,7 @@ private:
     {
         // Modularized: build parameters and x0, set parameters on solver, then call solver
         std::vector<double> x0;
-        bool skipSolve = false;
-        std::array<double, NP> parameters = buildParameters(req, x0, skipSolve, resp);
-        if (skipSolve) return;
+        std::array<double, NP> parameters = buildParameters(x0, req, resp);
 
         {
             std::string x0_str = "x0: ";
@@ -157,13 +155,12 @@ private:
 
     // Build parameter vector and initial state x0 from the request. If a parameter-size mismatch
     // is detected, this will set skipSolve=true and populate resp with empty results.
-    std::array<double, NP> buildParameters(const std::shared_ptr<SplineDebug::Request> req, std::vector<double> &x0, bool &skipSolve, std::shared_ptr<SplineDebug::Response> resp)
+    std::array<double, NP> buildParameters(std::vector<double> &x0, const std::shared_ptr<SplineDebug::Request> req, std::shared_ptr<SplineDebug::Response> resp)
     {
-        skipSolve = false;
         // knots
         std::vector<double> knots(req->knots.data.begin(), req->knots.data.end());
-        int n_segments = (int)knots.size() - 1;
-        RCLCPP_ERROR(this->get_logger(), "Received request with %d segments", n_segments);
+        int n_segments = NX;
+        RCLCPP_INFO(this->get_logger(), "Received request with %d segments", n_segments);
 
         // x_coeffs and y_coeffs are flattened arrays of length 4 * n_segments
         std::vector<double> x_coeffs_flat(req->x_coeffs.data.begin(), req->x_coeffs.data.end());
@@ -176,7 +173,7 @@ private:
 
         // Adjust sizes if necessary (simple strategy: extend last values)
         if (n_segments < target_segments) {
-            RCLCPP_ERROR(this->get_logger(), "Extending from %d to %d segments", n_segments, target_segments);
+            RCLCPP_INFO(this->get_logger(), "Extending from %d to %d segments", n_segments, target_segments);
             int n_missing = target_segments - n_segments;
             double last_knot = knots.back();
             double ds = 0.0;
@@ -197,7 +194,7 @@ private:
                 for (int i = 0; i < n_missing; ++i) curvatures.push_back(last_k);
             }
         } else if (n_segments > target_segments) {
-            RCLCPP_ERROR(this->get_logger(), "Clipping from %d to %d segments", n_segments, target_segments);
+            RCLCPP_INFO(this->get_logger(), "Clipping from %d to %d segments", n_segments, target_segments);
             // clip to exactly target_segments segments
             knots.resize(target_segments);
             x_coeffs_flat.resize(4 * (target_segments-1));
@@ -205,10 +202,10 @@ private:
             curvatures.resize(4*(target_segments-1));
         }
 
-        RCLCPP_ERROR(this->get_logger(), "sizes: knots=%zu x_coeffs=%zu y_coeffs=%zu curvatures=%zu body_points=%zu", knots.size(), x_coeffs_flat.size(), y_coeffs_flat.size(), curvatures.size(), req->body_points.size());
+        RCLCPP_INFO(this->get_logger(), "sizes: knots=%zu x_coeffs=%zu y_coeffs=%zu curvatures=%zu body_points=%zu", knots.size(), x_coeffs_flat.size(), y_coeffs_flat.size(), curvatures.size(), req->body_points.size());
 
         if (req->body_points.size() != req->body_points_curvilinear.size()) {
-            RCLCPP_ERROR(this->get_logger(), "body points length mismatch: body_points=%zu body_points_curvilinear=%zu", req->body_points.size(), req->body_points_curvilinear.size());
+            RCLCPP_INFO(this->get_logger(), "body points length mismatch: body_points=%zu body_points_curvilinear=%zu", req->body_points.size(), req->body_points_curvilinear.size());
             assert(req->body_points.size() == req->body_points_curvilinear.size() && "body points mismatch");
         }
 
@@ -260,10 +257,10 @@ private:
             parameters[idx++] = v;
         }
 
-        // 8. body_points_xy
-        for (double v : body_points_xy) {
-            parameters[idx++] = v;
-        }
+        // // 8. body_points_xy
+        // for (double v : body_points_xy) {
+        //     parameters[idx++] = v;
+        // }
 
         parameters[idx++] = lf;
         parameters[idx++] = lr;
@@ -276,24 +273,6 @@ private:
 
         // store reference path length for per-stage s_interp construction
         if (!knots.empty()) sref_ = knots.back();
-
-        // sanity-check NP
-        if (CURVILINEAR_BICYCLE_MODEL_SPATIAL_NP > 0) {
-            size_t actual_np = parameters.size();
-            size_t expected_np = (size_t)CURVILINEAR_BICYCLE_MODEL_SPATIAL_NP;
-            if (actual_np != expected_np) {
-                size_t sample = std::min((size_t)10, actual_np);
-                std::string s_first = "";
-                for (size_t i = 0; i < sample; ++i) s_first += std::to_string(parameters[i]) + ", ";
-                std::string s_last = "";
-                for (size_t i = (actual_np > sample ? actual_np - sample : 0); i < actual_np; ++i) s_last += std::to_string(parameters[i]) + ", ";
-                RCLCPP_ERROR(this->get_logger(), "parameter length mismatch: actual=%zu expected=%zu; first=%s last=%s", actual_np, expected_np, s_first.c_str(), s_last.c_str());
-                resp->optimised_steering.data.clear();
-                resp->optimised_trajectory.points.clear();
-                RCLCPP_ERROR(this->get_logger(), "Skipping solve due to parameter-size mismatch");
-                skipSolve = true;
-            }
-        }
 
         return parameters;
     }

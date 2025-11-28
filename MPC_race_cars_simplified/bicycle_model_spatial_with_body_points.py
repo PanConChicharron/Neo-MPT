@@ -46,7 +46,9 @@ def bicycle_model_spatial_with_body_points(n_points, num_body_points):
     print("x_body_points shape: ", x_body_points.shape)
     print("y_body_points shape: ", y_body_points.shape)
 
-    p = vertcat(s_sym, x_ref_s_symbolic_curvature_cubic_spline.get_parameters(), y_ref_s_symbolic_curvature_cubic_spline.get_parameters(), kappa_ref_s_symbolic_curvature_cubic_spline.get_parameters(), x_body_points, y_body_points, lf, lr)
+    p = vertcat(s_sym, x_ref_s_symbolic_curvature_cubic_spline.get_parameters(), y_ref_s_symbolic_curvature_cubic_spline.get_parameters(), kappa_ref_s_symbolic_curvature_cubic_spline.get_parameters())
+    # p = vertcat(p, x_body_points, y_body_points)
+    p = vertcat(p, lf, lr)
 
     # import pdb; pdb.set_trace()
     print("n_points: ", n_points)
@@ -87,24 +89,24 @@ def bicycle_model_spatial_with_body_points(n_points, num_body_points):
     deY_body_points_ds = []
 
     for i in range(num_body_points):
-        s_i = s_body_points[i]
-        eY_i = eY_body_points[i]
+        # s_i = s_body_points[i]
+        # eY_i = eY_body_points[i]
 
-        x_centre = x_ref_s + eY * (-sin(psi_ref_s))
-        y_centre = y_ref_s + eY * (cos(psi_ref_s))
-        psi = psi_ref_s + eψ
+        # x_centre = x_ref_s + eY * (-sin(psi_ref_s))
+        # y_centre = y_ref_s + eY * (cos(psi_ref_s))
+        # psi = psi_ref_s + eψ
 
-        x_body = x_body_points[i]
-        y_body = y_body_points[i]
+        # x_body = x_body_points[i]
+        # y_body = y_body_points[i]
 
-        dx = x_body - x_centre
-        dy = y_body - y_centre
+        # dx = x_body - x_centre
+        # dy = y_body - y_centre
 
         # evaluate curvature spline at body point s position
-        x_ref_body_s_i = substitute(x_ref_s, s_sym, s_i)
-        y_ref_body_s_i = substitute(y_ref_s, s_sym, s_i)
-        psi_ref_body_s_i = substitute(psi_ref_s, s_sym, s_i)
-        kappa_ref_s_i = substitute(kappa_ref_s, s_sym, s_i)
+        # x_ref_body_s_i = substitute(x_ref_s, s_sym, s_i)
+        # y_ref_body_s_i = substitute(y_ref_s, s_sym, s_i)
+        # psi_ref_body_s_i = substitute(psi_ref_s, s_sym, s_i)
+        # kappa_ref_s_i = substitute(kappa_ref_s, s_sym, s_i)
 
         # dynamics for body point s position
         ds_i_ds = 1 # -(kappa*(dx*sin(psi_ref_s-psi_ref_body_s_i) - dy*cos(psi_ref_s-psi_ref_body_s_i)) + cos(beta + psi-psi_ref_body_s_i))*(kappa_ref_s*eY - 1)/((kappa_ref_s_i*eY_i - 1)*cos(beta + eψ))
