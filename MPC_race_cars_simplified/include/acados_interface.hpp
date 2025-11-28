@@ -12,27 +12,36 @@ extern "C" {
 #define NU     CURVILINEAR_BICYCLE_MODEL_SPATIAL_NU
 constexpr size_t N      = CURVILINEAR_BICYCLE_MODEL_SPATIAL_N;
 
+struct AcadosSolution {
+    std::array<std::array<double, NX>, N+1> xtraj;
+    std::array<std::array<double, NU>, N> utraj;
+
+    int status;
+    std::string info;
+};
+
 class AcadosInterface {
 public:
     AcadosInterface();
     ~AcadosInterface();
 
     int solve();
-    std::pair<int, std::string> getControl(std::array<double, NX> x0);
-    // Retrieve full horizon of states (length (N+1)*NX)
-    std::array<std::array<double, NX>, N+1> getStateTrajectory() const;
-    // Retrieve full horizon of controls (length N*NU)
-    std::array<std::array<double, NU>, N> getControlTrajectory() const;
+    AcadosSolution getControl(std::array<double, NX> x0);
     // Set parameters for a single stage
     void setParameters(int stage, std::array<double, NP> params);
     // Set the same parameters for all stages
     void setParametersAllStages(std::array<double, NP> params);
     // Warm start: set initial guesses for all states and controls
-    void setWarmStart(const double* x_init, const double* u_init);
+    void setWarmStart(std::array<double, NX> x0, std::array<double, NU> u0);
     // Set the initial state constraint (lbx/ubx) at stage 0
-    void setInitialState(double* x0);
+    void setInitialState(std::array<double, NX> x0, std::array<double, NU> u0);
 
 private:
+    // Retrieve full horizon of states (length (N+1)*NX)
+    std::array<std::array<double, NX>, N+1> getStateTrajectory() const;
+    // Retrieve full horizon of controls (length N*NU)
+    std::array<std::array<double, NU>, N> getControlTrajectory() const;
+
     curvilinear_bicycle_model_spatial_solver_capsule* capsule_;
     ocp_nlp_config *nlp_config_;
     ocp_nlp_dims *nlp_dims_;

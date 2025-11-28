@@ -100,15 +100,15 @@ private:
             RCLCPP_INFO(this->get_logger(), "%s", x_init_str.c_str());
         }
 
-        mpc_.setWarmStart(x_init.data(), u_init.data());
-        auto [status, solver_info] = mpc_.getControl(x_init);
-        RCLCPP_INFO(this->get_logger(), "Acados solve status: %s", status == ACADOS_SUCCESS ? "Success" : "Failure");
-        RCLCPP_INFO(this->get_logger(), "%s", solver_info.c_str());
+        mpc_.setWarmStart(x_init, u_init);
+        auto solution = mpc_.getControl(x_init);
+        RCLCPP_INFO(this->get_logger(), "Acados solve status: %s", solution.status == ACADOS_SUCCESS ? "Success" : "Failure");
+        RCLCPP_INFO(this->get_logger(), "%s", solution.info.c_str());
 
         RCLCPP_INFO(this->get_logger(), "Retrieving results...");
         // Retrieve control trajectory and state trajectory (returned by value)
-        auto utraj = mpc_.getControlTrajectory();
-        auto xtraj = mpc_.getStateTrajectory();
+        auto utraj = solution.utraj;
+        auto xtraj = solution.xtraj;
 
         // Fill response: optimised_steering = flattened utraj
         resp->optimised_steering.data.clear();
