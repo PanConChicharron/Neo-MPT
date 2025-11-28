@@ -136,7 +136,6 @@ class ArraySubscriber(Node):
         # self.y_ref_spline = CubicSpline(self.spline_knots[:-1], self.spline_coeffs_y)
         self.clothoid_spline = ClothoidSpline(self.spline_knots, self.curvatures)
 
-
         x0 = np.array([
             0., 
             0.,

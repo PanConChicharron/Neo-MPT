@@ -148,7 +148,7 @@ class PathTrackingMPCSpatialWithBodyPoints:
             parameters = np.concatenate((s_interp, x_ref_sub_knots, x_ref_sub_coefficients.flatten(), y_ref_sub_knots, y_ref_sub_coefficients.flatten(), clothoid_sub_knots, clothoid_sub_coefficients.flatten()), axis=0)
             # parameters = np.concatenate((parameters, body_points_array), axis=0)
             parameters = np.concatenate((parameters, [lf, lr]), axis=0)
-
+                        
             print("s_interp: ", len(s_interp))
             print("x_ref_sub_knots: ", len(x_ref_sub_knots))
             print("x_ref_sub: ", len(x_ref_sub_coefficients.flatten()))

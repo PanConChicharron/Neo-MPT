@@ -62,6 +62,90 @@ private:
         latest_mpt_traj_ = *msg;
     }
 
+    // Compute cubic spline coefficients from knots and values (natural cubic spline)
+    // Returns flattened array of coefficients: [col0_row0, col0_row1, col0_row2, col0_row3, col1_row0, ...]
+    // matching scipy's CubicSpline with column-major ('F') flatten
+    std::vector<double> computeCubicSplineCoeffs(const std::vector<double> &knots, const std::vector<double> &values)
+    {
+        int n = knots.size();
+        if (n < 2 || values.size() != n) {
+            RCLCPP_ERROR(this->get_logger(), "Invalid input for cubic spline: n=%d, values=%zu", n, values.size());
+            return std::vector<double>(4 * std::max(0, n-1), 0.0);
+        }
+
+        int n_segments = n - 1;
+        std::vector<double> h(n_segments);
+        for (int i = 0; i < n_segments; ++i) {
+            h[i] = knots[i+1] - knots[i];
+            if (h[i] <= 0) {
+                RCLCPP_WARN(this->get_logger(), "Non-increasing knots at i=%d", i);
+                h[i] = 1e-6;  // Prevent division by zero
+            }
+        }
+
+        // Solve for second derivatives (M) using tridiagonal system (natural spline: M[0]=M[n-1]=0)
+        std::vector<double> M(n, 0.0);
+        if (n > 2) {
+            std::vector<double> a(n), b(n), c(n), d(n);
+            // Natural boundary: M[0] = 0
+            b[0] = 1.0;
+            c[0] = 0.0;
+            d[0] = 0.0;
+
+            for (int i = 1; i < n-1; ++i) {
+                a[i] = h[i-1];
+                b[i] = 2.0 * (h[i-1] + h[i]);
+                c[i] = h[i];
+                d[i] = 6.0 * ((values[i+1] - values[i]) / h[i] - (values[i] - values[i-1]) / h[i-1]);
+            }
+
+            // Natural boundary: M[n-1] = 0
+            a[n-1] = 0.0;
+            b[n-1] = 1.0;
+            d[n-1] = 0.0;
+
+            // Thomas algorithm (tridiagonal solver)
+            c[0] /= b[0];
+            d[0] /= b[0];
+            for (int i = 1; i < n; ++i) {
+                double denom = b[i] - a[i] * c[i-1];
+                if (i < n-1) c[i] /= denom;
+                d[i] = (d[i] - a[i] * d[i-1]) / denom;
+            }
+            M[n-1] = d[n-1];
+            for (int i = n-2; i >= 0; --i) {
+                M[i] = d[i] - c[i] * M[i+1];
+            }
+        }
+
+        // Compute cubic polynomial coefficients for each segment
+        // Scipy's format: coeffs[0,:] = a3, coeffs[1,:] = a2, coeffs[2,:] = a1, coeffs[3,:] = a0
+        // where p(x) = a3*(x-xi)^3 + a2*(x-xi)^2 + a1*(x-xi) + a0
+        std::vector<double> coeffs_flat;
+        coeffs_flat.reserve(4 * n_segments);
+
+        for (int i = 0; i < n_segments; ++i) {
+            double hi = h[i];
+            double yi = values[i];
+            double yi1 = values[i+1];
+            double Mi = M[i];
+            double Mi1 = M[i+1];
+
+            double a3 = (Mi1 - Mi) / (6.0 * hi);
+            double a2 = Mi / 2.0;
+            double a1 = (yi1 - yi) / hi - hi * (2.0 * Mi + Mi1) / 6.0;
+            double a0 = yi;
+
+            // Column-major flatten: segment i coefficients are [a3, a2, a1, a0]
+            coeffs_flat.push_back(a3);
+            coeffs_flat.push_back(a2);
+            coeffs_flat.push_back(a1);
+            coeffs_flat.push_back(a0);
+        }
+
+        return coeffs_flat;
+    }
+
     void serviceCallback(const std::shared_ptr<SplineDebug::Request> req, std::shared_ptr<SplineDebug::Response> resp)
     {
         // Modularized: build parameters and x0, set parameters on solver, then call solver
@@ -159,14 +243,15 @@ private:
     {
         // knots
         std::vector<double> knots(req->knots.data.begin(), req->knots.data.end());
-        int n_segments = NX;
-        RCLCPP_INFO(this->get_logger(), "Received request with %d segments", n_segments);
+        int n_segments = 0;
+        if (knots.size() >= 1) n_segments = (int)knots.size() - 1;
+        RCLCPP_INFO(this->get_logger(), "Received request with %d segments (knots=%zu)", n_segments, knots.size());
 
         // x_coeffs and y_coeffs are flattened arrays of length 4 * n_segments
         std::vector<double> x_coeffs_flat(req->x_coeffs.data.begin(), req->x_coeffs.data.end());
         std::vector<double> y_coeffs_flat(req->y_coeffs.data.begin(), req->y_coeffs.data.end());
 
-        // curvatures
+        // curvatures: per-knot curvature values (need to convert to cubic spline coeffs)
         std::vector<double> curvatures(req->curvatures.data.begin(), req->curvatures.data.end());
 
         int target_segments = CURVILINEAR_BICYCLE_MODEL_SPATIAL_N; // number of segments (solver horizon)
@@ -188,7 +273,7 @@ private:
                 for (int j = 0; j < n_missing; ++j) y_coeffs_flat.push_back(v);
             }
 
-            // extend curvatures
+            // extend curvatures (per-knot values)
             if (!curvatures.empty()) {
                 double last_k = curvatures.back();
                 for (int i = 0; i < n_missing; ++i) curvatures.push_back(last_k);
@@ -199,7 +284,7 @@ private:
             knots.resize(target_segments);
             x_coeffs_flat.resize(4 * (target_segments-1));
             y_coeffs_flat.resize(4 * (target_segments-1));
-            curvatures.resize(4*(target_segments-1));
+            curvatures.resize(target_segments); // Keep as per-knot (N values)
         }
 
         RCLCPP_INFO(this->get_logger(), "sizes: knots=%zu x_coeffs=%zu y_coeffs=%zu curvatures=%zu body_points=%zu", knots.size(), x_coeffs_flat.size(), y_coeffs_flat.size(), curvatures.size(), req->body_points.size());
@@ -247,13 +332,26 @@ private:
             parameters[idx++] = v;
         }
 
-        // 6. knots again
+        // 6. knots again (for clothoid)
         for (double v : knots) {
             parameters[idx++] = v;
         }
 
-        // 7. curvatures
-        for (double v : curvatures) {
+        // 7. Compute cubic spline coefficients from curvatures
+        // Python uses: ClothoidSpline -> CubicSpline(knots, curvatures) -> coeffs (4×(N-1))
+        // We need to fit a cubic spline to (knots, curvatures) and extract the 4×(N-1) coefficients
+        std::vector<double> clothoid_coeffs_flat = computeCubicSplineCoeffs(knots, curvatures);
+        RCLCPP_INFO(this->get_logger(), "Computed clothoid coeffs: size=%zu (expected 4*99=396), first 8: [%.6f, %.6f, %.6f, %.6f, %.6f, %.6f, %.6f, %.6f]", 
+                    clothoid_coeffs_flat.size(), 
+                    clothoid_coeffs_flat.size() > 0 ? clothoid_coeffs_flat[0] : 0,
+                    clothoid_coeffs_flat.size() > 1 ? clothoid_coeffs_flat[1] : 0,
+                    clothoid_coeffs_flat.size() > 2 ? clothoid_coeffs_flat[2] : 0,
+                    clothoid_coeffs_flat.size() > 3 ? clothoid_coeffs_flat[3] : 0,
+                    clothoid_coeffs_flat.size() > 4 ? clothoid_coeffs_flat[4] : 0,
+                    clothoid_coeffs_flat.size() > 5 ? clothoid_coeffs_flat[5] : 0,
+                    clothoid_coeffs_flat.size() > 6 ? clothoid_coeffs_flat[6] : 0,
+                    clothoid_coeffs_flat.size() > 7 ? clothoid_coeffs_flat[7] : 0);
+        for (double v : clothoid_coeffs_flat) {
             parameters[idx++] = v;
         }
 
