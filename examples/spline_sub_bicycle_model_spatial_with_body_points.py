@@ -54,14 +54,9 @@ class ArraySubscriber(Node):
         # four corners
         self.lf=4.89
         self.lr=0.0
-        self.w=1.64
-        self.front_overhang=1.0
-        self.rear_overhang=1.1
-        self.left_overhang=0.128
-        self.right_overhang=0.128
 
         print("Initializing MPC...")
-        self.path_tracking_mpc_spatial_with_body_points = PathTrackingMPCSpatialWithBodyPoints(self.Sf, self.N, self.N, self.num_body_points, self.lf, self.lr, self.w, self.front_overhang, self.rear_overhang, self.left_overhang, self.right_overhang)
+        self.path_tracking_mpc_spatial_with_body_points = PathTrackingMPCSpatialWithBodyPoints(self.Sf, self.N, self.N, self.num_body_points)
         print("MPC Initialized.")
 
         self.optimised_steering = None
@@ -159,10 +154,12 @@ class ArraySubscriber(Node):
         # print(x0)
 
         t = time.time()
-        simX, simU, Sf, elapsed = self.path_tracking_mpc_spatial_with_body_points.get_optimised_steering(x0, body_points_array, self.spline_knots, self.spline_coeffs_x, self.spline_knots, self.spline_coeffs_y, self.clothoid_spline)
+        simX, simU, Sf, elapsed = self.path_tracking_mpc_spatial_with_body_points.get_optimised_steering(x0, body_points_array, self.spline_knots, self.spline_coeffs_x, self.spline_knots, self.spline_coeffs_y, self.clothoid_spline, self.lf, self.lr)
 
         resp.optimised_steering = Float32MultiArray()
         resp.optimised_steering.data = simU.flatten().tolist()
+
+        print("Optimised steering: " + str(simU.flatten().tolist()))
 
         # print(f"Optimized steering: {resp.optimised_steering.data}")
 
@@ -177,8 +174,8 @@ class ArraySubscriber(Node):
         s_body_points_N = simX[:, 2 : 2 + self.num_body_points]
         eY_body_points_N = simX[:, 2 + self.num_body_points : ]
 
-        print("s_body_points_N: ", s_body_points_N)
-        print("eY_body_points_N: ", eY_body_points_N)
+        # print("s_body_points_N: ", s_body_points_N)
+        # print("eY_body_points_N: ", eY_body_points_N)
 
         # Rasterize the spline and plot the x, y spline and the optimized states (eY, eψ)
 
@@ -295,7 +292,7 @@ class ArraySubscriber(Node):
         self.ax[0, 1].legend()
 
         if self.optimised_steering is None:
-            return
+            return resp
 
         temp_s = np.linspace(0, Sf, len(self.optimised_steering))
 

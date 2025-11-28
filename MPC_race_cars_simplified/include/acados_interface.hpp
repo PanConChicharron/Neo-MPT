@@ -22,7 +22,7 @@ struct AcadosSolution {
 
 class AcadosInterface {
 public:
-    AcadosInterface();
+    AcadosInterface(int max_iter, double tol);
     ~AcadosInterface();
 
     int solve();
@@ -35,6 +35,8 @@ public:
     void setWarmStart(std::array<double, NX> x0, std::array<double, NU> u0);
     // Set the initial state constraint (lbx/ubx) at stage 0
     void setInitialState(std::array<double, NX> x0, std::array<double, NU> u0);
+    // Set solver options at runtime: max_iter and tolerance (KKT tol)
+    void setSolverOptions(int max_iter, double tol);
 
 private:
     // Retrieve full horizon of states (length (N+1)*NX)

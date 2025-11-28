@@ -3,21 +3,12 @@ from casadi import *
 from Utils.symbolic_cubic_spline import SymbolicCubicSpline
 
 
-def bicycle_model_spatial_with_body_points(n_points, num_body_points, lf, lr, w, front_overhang, rear_overhang, left_overhang, right_overhang):
+def bicycle_model_spatial_with_body_points(n_points, num_body_points):
     # define structs
     constraint = types.SimpleNamespace()
     model = types.SimpleNamespace()
 
     model_name = "curvilinear_bicycle_model_spatial"
-
-    L = lf + lr
-
-    corner_points = np.array([
-        [lf + front_overhang, w/2 +right_overhang],  # front left
-        [lf + front_overhang, -w/2 - left_overhang],  # front right
-        [-rear_overhang, -w/2 - left_overhang],  # rear right
-        [-rear_overhang, w/2 + right_overhang],  # rear left
-    ])
 
     ## CasADi Model
     # set up states & controls
@@ -44,6 +35,9 @@ def bicycle_model_spatial_with_body_points(n_points, num_body_points, lf, lr, w,
     y_ref_s = y_ref_s_symbolic_curvature_cubic_spline.get_symbolic_spline()
     kappa_ref_s_symbolic_curvature_cubic_spline = SymbolicCubicSpline(n_points=n_points, u=s_sym)
     kappa_ref_s = kappa_ref_s_symbolic_curvature_cubic_spline.get_symbolic_spline()
+    lf = SX.sym("lf")
+    lr = SX.sym("lr")
+    L = lf + lr
 
     print("sym shape: ", s_sym.shape)
     print("x_ref_s shape: ", x_ref_s_symbolic_curvature_cubic_spline.get_parameters().shape)
@@ -52,7 +46,7 @@ def bicycle_model_spatial_with_body_points(n_points, num_body_points, lf, lr, w,
     print("x_body_points shape: ", x_body_points.shape)
     print("y_body_points shape: ", y_body_points.shape)
 
-    p = vertcat(s_sym, x_ref_s_symbolic_curvature_cubic_spline.get_parameters(), y_ref_s_symbolic_curvature_cubic_spline.get_parameters(), kappa_ref_s_symbolic_curvature_cubic_spline.get_parameters(), x_body_points, y_body_points)
+    p = vertcat(s_sym, x_ref_s_symbolic_curvature_cubic_spline.get_parameters(), y_ref_s_symbolic_curvature_cubic_spline.get_parameters(), kappa_ref_s_symbolic_curvature_cubic_spline.get_parameters(), x_body_points, y_body_points, lf, lr)
 
     # import pdb; pdb.set_trace()
     print("n_points: ", n_points)

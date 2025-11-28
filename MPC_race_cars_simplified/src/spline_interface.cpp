@@ -99,8 +99,8 @@ private:
             }
             RCLCPP_INFO(this->get_logger(), "%s", x_init_str.c_str());
         }
-
-        mpc_.setWarmStart(x_init, u_init);
+        
+        // Do not warm-start the full horizon (Python only sets lbx/ubx at stage 0)
         auto solution = mpc_.getControl(x_init);
         RCLCPP_INFO(this->get_logger(), "Acados solve status: %s", solution.status == ACADOS_SUCCESS ? "Success" : "Failure");
         RCLCPP_INFO(this->get_logger(), "%s", solution.info.c_str());
@@ -265,11 +265,17 @@ private:
             parameters[idx++] = v;
         }
 
+        parameters[idx++] = lf;
+        parameters[idx++] = lr;
+
         // set x0: initial state vector
         x0.clear();
         x0.push_back(0.0);
         x0.push_back(0.0);
         x0.insert(x0.end(), body_points_curvilinear.begin(), body_points_curvilinear.end());
+
+        // store reference path length for per-stage s_interp construction
+        if (!knots.empty()) sref_ = knots.back();
 
         // sanity-check NP
         if (CURVILINEAR_BICYCLE_MODEL_SPATIAL_NP > 0) {
@@ -292,10 +298,19 @@ private:
         return parameters;
     }
 
-    // Set parameters on the AcadosInterface for all stages. Returns false and populates resp on failure.
+    // Set parameters on the AcadosInterface for all stages. We update the first parameter (s_interp)
+    // per stage to match the Python behavior that calls `set(j, "p", parameters)` in a loop.
     void setParametersToSolver(const std::array<double, NP> &parameters)
     {
-        mpc_.setParametersAllStages(parameters);
+        for (int stage = 0; stage < (int)N; ++stage) {
+            std::array<double, NP> params_copy = parameters;
+            double s_interp = 0.0;
+            if (sref_ > 0.0) {
+                s_interp = sref_ * ((double)stage / (double)N);
+            }
+            params_copy[0] = s_interp;
+            mpc_.setParameters(stage, params_copy);
+        }
     }
 
     rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr steering_sub_;
@@ -305,8 +320,12 @@ private:
     std::mutex mutex_;
     std_msgs::msg::Float32MultiArray latest_steering_;
     autoware_planning_msgs::msg::Trajectory latest_mpt_traj_;
+    double lf{4.89};
+    double lr{0.0};
+    // reference path length used to compute per-stage s_interp
+    double sref_{0.0};
 
-    AcadosInterface mpc_;
+    AcadosInterface mpc_{20, 1e-6}; // set max_iter and tol at construction
 };
 
 int main(int argc, char** argv)

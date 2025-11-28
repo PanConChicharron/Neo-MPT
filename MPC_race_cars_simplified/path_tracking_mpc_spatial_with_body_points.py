@@ -1,7 +1,11 @@
 # author: Arjun Jagdish Ram
 import numpy as np
+import os
 import scipy.linalg
+import sys
 import time
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 
@@ -9,28 +13,20 @@ from MPC_race_cars_simplified.bicycle_model_spatial_with_body_points import bicy
 from Utils.clothoid_spline import ClothoidSpline
 
 class PathTrackingMPCSpatialWithBodyPoints:
-    def __init__(self, Tf, N, n_points, num_body_points, lf, lr, w, front_overhang, rear_overhang, left_overhang, right_overhang):
+    def __init__(self, Tf, N, n_points, num_body_points, build=True, generate=True):
         self.Tf = Tf
         self.N = N
         self.n_points = n_points
         self.num_body_points = num_body_points
 
-        self.lf = lf
-        self.lr = lr
-        self.w = w
-        self.front_overhang = front_overhang
-        self.rear_overhang = rear_overhang
-        self.left_overhang = left_overhang
-        self.right_overhang = right_overhang
+        self.constraint, self.model, self.acados_solver = self.acados_settings(build, generate)
 
-        self.constraint, self.model, self.acados_solver = self.acados_settings(lf, lr, w, front_overhang, rear_overhang, left_overhang, right_overhang)
-
-    def acados_settings(self, lf, lr, w, front_overhang, rear_overhang, left_overhang, right_overhang):
+    def acados_settings(self, build=True, generate=True):
         # create render arguments
         ocp = AcadosOcp()
 
         # export model
-        model, constraint = bicycle_model_spatial_with_body_points(self.n_points, self.num_body_points, lf, lr, w, front_overhang, rear_overhang, left_overhang, right_overhang)
+        model, constraint = bicycle_model_spatial_with_body_points(self.n_points, self.num_body_points)
 
         # define acados ODE
         model_ac = AcadosModel()
@@ -118,12 +114,11 @@ class PathTrackingMPCSpatialWithBodyPoints:
 
         # create solver
         print("Creating acados solver...")
-        acados_solver = AcadosOcpSolver(ocp, json_file="acados_ocp.json")
-        # acados_solver = AcadosOcpSolver(ocp, json_file='acados_ocp.json', build=False, generate=False)
+        acados_solver = AcadosOcpSolver(ocp, json_file="acados_ocp.json", build=build, generate=generate)
 
         return constraint, model, acados_solver
 
-    def get_optimised_steering(self, x0, body_points_array, x_ref_sub_knots, x_ref_sub_coefficients, y_ref_sub_knots, y_ref_sub_coefficients, clothoid_spline: ClothoidSpline):
+    def get_optimised_steering(self, x0, body_points_array, x_ref_sub_knots, x_ref_sub_coefficients, y_ref_sub_knots, y_ref_sub_coefficients, clothoid_spline: ClothoidSpline, lf, lr):
         # load model
         Sf = clothoid_spline.pathlength
         constraint, model, acados_solver = self.constraint, self.model, self.acados_solver
@@ -151,6 +146,7 @@ class PathTrackingMPCSpatialWithBodyPoints:
             # Ensure all arrays are properly shaped before concatenation
             s_interp = np.array([s0 + (sref - s0) * j / self.N])  # Convert scalar to 1D array
             parameters = np.concatenate((s_interp, x_ref_sub_knots, x_ref_sub_coefficients.flatten(), y_ref_sub_knots, y_ref_sub_coefficients.flatten(), clothoid_sub_knots, clothoid_sub_coefficients.flatten(), body_points_array), axis=0)
+            parameters = np.concatenate((parameters, [lf, lr]), axis=0)
 
             print("s_interp: ", len(s_interp))
             print("x_ref_sub_knots: ", len(x_ref_sub_knots))
@@ -197,3 +193,14 @@ class PathTrackingMPCSpatialWithBodyPoints:
         simU = simU[:final_idx, :]
 
         return simX, simU, Sf, elapsed
+
+def main():
+
+    N = 100
+    Sf = 100
+    num_body_points = 6
+
+    _ = PathTrackingMPCSpatialWithBodyPoints(Sf, N, N, num_body_points)
+
+if __name__ == "__main__":
+    main()
