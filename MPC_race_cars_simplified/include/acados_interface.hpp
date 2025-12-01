@@ -34,7 +34,7 @@ public:
     // Warm start: set initial guesses for all states and controls
     void setWarmStart(std::array<double, NX> x0, std::array<double, NU> u0);
     // Set the initial state constraint (lbx/ubx) at stage 0
-    void setInitialState(std::array<double, NX> x0, std::array<double, NU> u0);
+    void setInitialState(std::array<double, NX> x0);
     // Set solver options at runtime: max_iter and tolerance (KKT tol)
     void setSolverOptions(int max_iter, double tol);
 

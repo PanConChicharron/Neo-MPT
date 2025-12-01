@@ -79,7 +79,7 @@ void AcadosInterface::setWarmStart(std::array<double, NX> x0, std::array<double,
     ocp_nlp_out_set(nlp_config_, nlp_dims_, nlp_out_, nlp_in_, nlp_dims->N, "x", const_cast<double *>(x0.data()));
 }
 
-void AcadosInterface::setInitialState(std::array<double, NX> x0, std::array<double, NU> u0)
+void AcadosInterface::setInitialState(std::array<double, NX> x0)
 {
     // set both lbx and ubx at stage 0 to force initial state
     ocp_nlp_constraints_model_set(nlp_config_, nlp_dims_, nlp_in_, nlp_out_, 0, "lbx", const_cast<double*>(x0.data()));
@@ -90,7 +90,7 @@ void AcadosInterface::setInitialState(std::array<double, NX> x0, std::array<doub
 std::array<std::array<double, NX>, N+1> AcadosInterface::getStateTrajectory() const
 {
     std::array<std::array<double, NX>, N+1> xtraj;
-    for (int ii = 0; ii <= nlp_dims_->N; ii++)
+    for (size_t ii = 0; ii <= nlp_dims_->N; ii++)
     {
         ocp_nlp_out_get(nlp_config_, nlp_dims_, nlp_out_, ii, "x", &xtraj[ii]);
     }
@@ -101,7 +101,7 @@ std::array<std::array<double, NX>, N+1> AcadosInterface::getStateTrajectory() co
 std::array<std::array<double, NU>, N> AcadosInterface::getControlTrajectory() const
 {
     std::array<std::array<double, NU>, N> utraj;
-    for (int ii = 0; ii < N; ii++)
+    for (size_t ii = 0; ii < N; ii++)
     {   
         ocp_nlp_out_get(nlp_config_, nlp_dims_, nlp_out_, ii, "u", &utraj[ii]);
     }
@@ -125,11 +125,8 @@ AcadosSolution AcadosInterface::getControl(std::array<double, NX> x0)
     double elapsed_time;
     int sqp_iter;
 
-    double xtraj[NX * (N+1)];
-    double utraj[NU * N];
-
     // initialize solution
-    setInitialState(x0, u0);
+    setInitialState(x0);
     
     int status = curvilinear_bicycle_model_spatial_acados_solve(capsule_);
     ocp_nlp_get(nlp_solver_, "time_tot", &elapsed_time);
